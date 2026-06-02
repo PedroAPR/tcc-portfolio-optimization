@@ -114,6 +114,59 @@ def bootstrap_ic(serie, fn, B=1000, block_mean=21, seed=7):
         estats[b] = fn(pd.Series(amostra))
     return np.percentile(estats, [2.5, 50, 97.5])
 
+def diagnosticos_serie(r, alpha_sig=0.05):
+    """
+    Bateria de diagnósticos para uma série de retornos de carteira:
+    Jarque-Bera, Ljung-Box(10), ARCH-LM(10) e ADF.
+    Justifica o uso de bootstrap em vez de testes paramétricos de Sharpe.
+    """
+    from statsmodels.stats.stattools import jarque_bera as _jb
+    from statsmodels.stats.diagnostic import het_arch
+    from statsmodels.tsa.stattools import adfuller
+    arr = np.asarray(r, float); arr = arr[~np.isnan(arr)]
+    jb_stat, jbp, sk, ku = _jb(arr)
+    lbp   = float(acorr_ljungbox(arr, lags=[10], return_df=True)["lb_pvalue"].iloc[0])
+    archp = float(het_arch(arr, nlags=10)[1])
+    adfp  = float(adfuller(arr, autolag="AIC")[1])
+    return {"assimetria": float(sk), "curtose": float(ku),
+            "JB_p": float(jbp), "LjungBox_p": lbp,
+            "ARCH_p": archp, "ADF_p": adfp,
+            "normal?": "não" if jbp < alpha_sig else "sim"}
+
+def lw_bootstrap_sharpe(ri, rj, bloco=10, reps=2000, seed=42):
+    """
+    Ledoit-Wolf (2008) via bootstrap estacionário para diferença de Sharpe diário.
+    Retorna (dSR_anualizado, p_valor_bicaudal).
+    """
+    ri = np.asarray(ri, float); rj = np.asarray(rj, float)
+    def _sr(x): s = x.std(ddof=1); return float(x.mean() / s) if s > 0 else 0.0
+    diff_obs = _sr(ri) - _sr(rj)
+    rng = np.random.default_rng(seed); n = len(ri)
+    diffs = np.array([_sr(ri[stationary_bootstrap_idx(n, bloco, rng)])
+                      - _sr(rj[stationary_bootstrap_idx(n, bloco, rng)])
+                      for _ in range(reps)])
+    se = diffs.std(ddof=1)
+    z  = diff_obs / se if se > 0 else 0.0
+    return float(diff_obs * np.sqrt(TRADING_DAYS)), float(2 * (1 - stats.norm.cdf(abs(z))))
+
+def lw_bootstrap_sortino(ri, rj, rf=0.0, bloco=10, reps=2000, seed=42):
+    """
+    Bootstrap estacionário para diferença de Sortino diário.
+    Retorna (dSortino_anualizado, p_valor_bicaudal).
+    """
+    ri = np.asarray(ri, float); rj = np.asarray(rj, float); rf = float(rf)
+    def _so(x):
+        exc = x - rf; dn = np.sqrt(np.mean(np.clip(exc, None, 0) ** 2))
+        return float(exc.mean() / dn) if dn > 0 else 0.0
+    diff_obs = _so(ri) - _so(rj)
+    rng = np.random.default_rng(seed); n = len(ri)
+    diffs = np.array([_so(ri[stationary_bootstrap_idx(n, bloco, rng)])
+                      - _so(rj[stationary_bootstrap_idx(n, bloco, rng)])
+                      for _ in range(reps)])
+    se = diffs.std(ddof=1)
+    z  = diff_obs / se if se > 0 else 0.0
+    return float(diff_obs * np.sqrt(TRADING_DAYS)), float(2 * (1 - stats.norm.cdf(abs(z))))
+
 def diagnostico_residuos(res, nome):
     """Executa diagnósticos de resíduos padronizados do modelo GARCH."""
     z = res.std_resid.dropna()

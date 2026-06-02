@@ -48,6 +48,55 @@ def estimar_sigma(janela, metodo="ledoit_wolf"):
         return np.cov(janela, rowvar=False)
     return ledoit_wolf(janela)
 
+def estrada_semicov(X, mar="media"):
+    """
+    Semicovariância downside de Estrada (2008).
+    mar: 'media' usa a média amostral como MAR; 'zero' usa zero; valor float usa literal.
+    Retorna a semicovariância diária (não anualizada).
+    """
+    X = np.asarray(X, float)
+    T, n = X.shape
+    if mar == "media":
+        tau = X.mean(axis=0)
+    elif mar == "zero":
+        tau = np.zeros(n)
+    else:
+        tau = np.full(n, float(mar))
+    M = np.minimum(X - tau, 0.0)
+    return (M.T @ M) / T
+
+def visoes_momentum(janela, tau_bl, Sigma, trading_days=252, visao_meses=(12, 1)):
+    """
+    Gera visões absolutas via momentum 12-1 (He & Litterman, 1999).
+    Retorna (P, Q, Omega) anualizados, compatíveis com bl_posterior.
+    P = identidade (cada ativo é uma visão absoluta independente).
+    Omega = diagonal de tau_bl * P * Sigma * P', floored em 1e-8.
+    """
+    R = np.asarray(janela, float)
+    T, n = R.shape
+    L, S_ = visao_meses
+    jl, js = int(L * 21), int(S_ * 21)
+    if T < jl + 5:
+        Q = R.mean(axis=0) * trading_days
+    else:
+        bloco = R[-jl:-js] if js > 0 else R[-jl:]
+        Q = np.prod(1 + bloco, axis=0) ** (trading_days / len(bloco)) - 1
+    P = np.eye(n)
+    Sg = Sigma if Sigma is not None else ledoit_wolf(R) * trading_days
+    Om = np.diag(np.maximum(np.diag(P @ (tau_bl * Sg) @ P.T), 1e-8))
+    return P, Q, Om
+
+def bl_posterior(Sigma, Pi, P, Q, Omega, tau_bl=0.05):
+    """
+    Posterior de Black-Litterman: combina prior de equilíbrio (Pi) com visões (P, Q, Omega).
+    Retorna vetor de retornos esperados mu_BL (anualizado).
+    """
+    tauS_inv = np.linalg.inv(tau_bl * Sigma)
+    Om_inv   = np.linalg.inv(Omega)
+    A = tauS_inv + P.T @ Om_inv @ P
+    b = tauS_inv @ Pi + P.T @ Om_inv @ Q
+    return np.linalg.solve(A, b)
+
 def _bounds(n, teto, long_only=True):
     hi = teto if teto is not None else 1.0
     return [(0.0, hi)] * n if long_only else [(-hi, hi)] * n
@@ -179,8 +228,9 @@ def otimizar_mes_task(args):
     Carrega os dados de cotações de forma independente no processo filho
     para evitar overhead de serialização (IPC) e problemas de memória no Windows.
     """
-    (i, data_rebal, dir_retornos_str, N, ALPHA, TETO_PESO, KAPPA_ORDENS, 
-     CVXPY_OK, REBAL, WARMUP_MESES, TRADING_DAYS, METODO_COV, MAR_MODO) = args
+    (i, data_rebal, dir_retornos_str, N, ALPHA, TETO_PESO, KAPPA_ORDENS,
+     CVXPY_OK, REBAL, WARMUP_MESES, TRADING_DAYS, METODO_COV, MAR_MODO,
+     DELTA, TAU, MAR_ESTRADA, VISAO_MOMENTUM_MESES) = args
     
     dir_retornos = Path(dir_retornos_str)
     pq_ret = dir_retornos / "retornos_simples_saneado.parquet"
@@ -224,11 +274,31 @@ def otimizar_mes_task(args):
     if CVXPY_OK:
         try:
             alvos["MinCVaR"] = w_min_cvar(Jv, ALPHA, None)
-        except Exception:
+        except Exception as e:
+            import warnings
+            warnings.warn(f"[otimizar_mes_task] CVaR falhou (i={i}): {e}. Usando EqualWeight.")
             alvos["MinCVaR"] = w_equal(N)
         try:
             alvos["MinCDaR"] = w_min_cdar(Jv, ALPHA, None)
-        except Exception:
+        except Exception as e:
+            import warnings
+            warnings.warn(f"[otimizar_mes_task] CDaR falhou (i={i}): {e}. Usando EqualWeight.")
             alvos["MinCDaR"] = w_equal(N)
-            
+
+    # --- Black-Litterman: prior clássico (Σ_LW) e prior downside (Σ_D) ---
+    try:
+        SigD = estrada_semicov(Jv, MAR_ESTRADA) * TRADING_DAYS
+        wm   = np.repeat(1.0 / N, N)
+        P, Q, Om = visoes_momentum(Jv, TAU, S, TRADING_DAYS, VISAO_MOMENTUM_MESES)
+        for nome, Sg, Pi in [("classico", S, DELTA * S @ wm),
+                              ("downside", SigD, DELTA * SigD @ wm)]:
+            mu_bl = bl_posterior(Sg, Pi, P, Q, Om, TAU)
+            alvos[f"BL_{nome}"]     = w_max_sharpe(mu_bl, Sg, rf_a, None)
+            alvos[f"BL_{nome}_c10"] = w_max_sharpe(mu_bl, Sg, rf_a, TETO_PESO)
+    except Exception as e:
+        import warnings
+        warnings.warn(f"[otimizar_mes_task] Black-Litterman falhou (i={i}): {e}. Usando EqualWeight.")
+        for k in ("BL_classico", "BL_classico_c10", "BL_downside", "BL_downside_c10"):
+            alvos[k] = w_equal(N)
+
     return i, data_rebal, alvos

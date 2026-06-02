@@ -278,12 +278,27 @@ def test_backtest_outputs():
     # Verifica que strategy_returns contém a coluna IBOV
     if "IBOV" not in df_ret.columns:
         raise AssertionError("A coluna 'IBOV' está ausente de strategy_returns.parquet!")
-        
+
+    # Valida que as 4 estratégias BL estão presentes (não caíram no fallback silencioso)
+    BL_ESPERADAS = ["BL_classico", "BL_classico_c10", "BL_downside", "BL_downside_c10"]
+    faltando = [s for s in BL_ESPERADAS if s not in df_ret.columns]
+    if faltando:
+        raise AssertionError(f"Estratégias BL ausentes de strategy_returns: {faltando}")
+
+    # Valida contagem mínima de estratégias (13 sem cvxpy, 15 com cvxpy)
+    n_estrategias = df_ret.shape[1] - 1  # -1 para descontar IBOV
+    if n_estrategias < 13:
+        raise AssertionError(
+            f"Contagem insuficiente de estratégias: {n_estrategias} (mínimo esperado: 13). "
+            f"Colunas: {list(df_ret.columns)}"
+        )
+
     print(f"  [OK] Arquivos de saída existem e não estão vazios.")
     print(f"  [OK] strategy_returns: {df_ret.shape[0]} datas x {df_ret.shape[1]} estratégias/IBOV.")
+    print(f"  [OK] {n_estrategias} estratégias validadas (inclui BL_classico/downside).")
     print(f"  [OK] desempenho_estrategias: {df_perf.shape[0]} estratégias x {df_perf.shape[1]} métricas.")
     print(f"  [OK] pesos_historico: {df_pesos.shape[0]} alocações de ativos gravadas.")
-    print("[OK] Teste 6: Estrutura física das saídas do backtest validada.")
+    print("[OK] Teste 6: Estrutura física e completude das saídas do backtest validadas.")
 
 # --- CASO DE TESTE 7: Validação de Restrições Metodológicas (MPT/PMPT CVM 175) ---
 def test_portfolio_constraints():
