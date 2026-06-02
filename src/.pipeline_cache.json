@@ -1,0 +1,11 @@
+{
+ "01_Conversao_Parquet": "f7c9470b9b0fe25578cc592b8569c4be",
+ "02_Consolidacao_Dados": "c2d749ea280a62294ed5a615bab3aae0",
+ "03_Filtro_Liquidez": "bd0c28898e7527f0fcf5614248e37d31",
+ "04_Taxas_Livres_Risco": "2dd16f1004daea15f1698c89468eb657",
+ "05_01_Alinhamento_Retornos": "8cabddbffd8b1cf19fb7bb237896ebfc",
+ "05_02_Saneamento_Winsorizacao": "050a93b22dd96bd9fc6b2d53552b7a08",
+ "06_Estimacao_Covariancia": "b550f44845fcd4e0fc636a5c11da92ef",
+ "07_Otimizacao_Carteiras": "2ee3558fa6a24f5f7446ba2afe9b1db9",
+ "08_Fronteira_Eficiente": "edac00a61e6891c8527ace6f5009b875"
+}

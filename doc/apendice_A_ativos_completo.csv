@@ -1,0 +1,136 @@
+Posição;Ticker;Nome da Empresa;Setor
+1;ABCB4;Banco ABC Brasil S.A.;Financeiro
+2;ABEV3;Ambev S.A.;Consumo Não Cíclico
+3;AGRO3;BrasilAgro – Cia Brasileira de Propriedades Agrícolas;Consumo Não Cíclico
+4;ALPA4;Alpargatas S.A.;Consumo Cíclico
+5;AMAR3;Marisa Lojas S.A.;Consumo Cíclico
+6;AMER3;Americanas S.A.;Consumo Cíclico
+7;AXIA3;Companhia de Participações Aliança da Bahia*;Utilidade Pública
+8;AXIA6;Companhia de Participações Aliança da Bahia*;Utilidade Pública
+9;B3SA3;B3 S.A. – Brasil, Bolsa, Balcão;Financeiro
+10;BBAS3;Banco do Brasil S.A.;Financeiro
+11;BBDC3;Banco Bradesco S.A.;Financeiro
+12;BBDC4;Banco Bradesco S.A.;Financeiro
+13;BEEF3;Minerva S.A.;Consumo Não Cíclico
+14;BEES3;Banestes S.A. – Banco do Estado do Espírito Santo;Financeiro
+15;BRAP3;Bradespar S.A.;Materiais Básicos
+16;BRAP4;Bradespar S.A.;Materiais Básicos
+17;BRKM3;Braskem S.A.;Materiais Básicos
+18;BRKM5;Braskem S.A.;Materiais Básicos
+19;BRSR6;Banco do Estado do Rio Grande do Sul S.A. – Banrisul;Financeiro
+20;CGAS5;Companhia de Gás de São Paulo – COMGÁS;Utilidade Pública
+21;CGRA4;Grazziotin S.A.;Consumo Cíclico
+22;CLSC4;Centrais Elétricas de Santa Catarina S.A. – CELESC;Utilidade Pública
+23;CMIG3;Companhia Energética de Minas Gerais – CEMIG;Utilidade Pública
+24;CMIG4;Companhia Energética de Minas Gerais – CEMIG;Utilidade Pública
+25;COCE5;Companhia Energética do Ceará – COELCE;Utilidade Pública
+26;CPFE3;CPFL Energia S.A.;Utilidade Pública
+27;CPLE3;Companhia Paranaense de Energia – COPEL;Utilidade Pública
+28;CSAN3;Cosan S.A.;Petróleo, Gás e Biocombustíveis
+29;CSMG3;Companhia de Saneamento de Minas Gerais – COPASA;Utilidade Pública
+30;CSNA3;Companhia Siderúrgica Nacional – CSN;Materiais Básicos
+31;CSUD3;Companhia Siderúrgica Nacional – CSN Mineração*;Materiais Básicos
+32;CYRE3;Cyrela Brazil Realty S.A. Empreendimentos e Participações;Consumo Cíclico
+33;DIRR3;Direcional Engenharia S.A.;Consumo Cíclico
+34;DXCO3;Dexco S.A.;Materiais Básicos
+35;ECOR3;EcoRodovias Infraestrutura e Logística S.A.;Bens Industriais
+36;EGIE3;Engie Brasil Energia S.A.;Utilidade Pública
+37;EMBJ3;Empresa Elétrica Bragantina S.A.*;Utilidade Pública
+38;ENEV3;Eneva S.A.;Utilidade Pública
+39;EQTL3;Equatorial Energia S.A.;Utilidade Pública
+40;ETER3;Eternit S.A.;Materiais Básicos
+41;EUCA4;Eucatex S.A. Indústria e Comércio;Materiais Básicos
+42;EVEN3;Even Construtora e Incorporadora S.A.;Consumo Cíclico
+43;EZTC3;EZTEC Empreendimentos e Participações S.A.;Consumo Cíclico
+44;FESA4;Cia de Ferro Ligas da Bahia – FERBASA;Materiais Básicos
+45;FHER3;Fertilizantes Heringer S.A.;Consumo Não Cíclico
+46;FICT3;Companhia de Telecomunicações do Brasil Central*;Comunicações
+47;FLRY3;Fleury S.A.;Saúde
+48;GFSA3;Gafisa S.A.;Consumo Cíclico
+49;GGBR3;Gerdau S.A.;Materiais Básicos
+50;GGBR4;Gerdau S.A.;Materiais Básicos
+51;GOAU3;Metalúrgica Gerdau S.A.;Materiais Básicos
+52;GOAU4;Metalúrgica Gerdau S.A.;Materiais Básicos
+53;GOLL54;Gol Linhas Aéreas Inteligentes S.A.;Consumo Cíclico
+54;GRND3;Grendene S.A.;Consumo Cíclico
+55;HAGA4;Companhia Haga S.A.*;Bens Industriais
+56;HBOR3;Helbor Empreendimentos S.A.;Consumo Cíclico
+57;HYPE3;Hypera S.A.;Saúde
+58;INEP4;Inepar Indústria e Construções S.A.;Bens Industriais
+59;ISAE4;ISA Cteep – Cia de Transmissão de Energia Elétrica Paulista;Utilidade Pública
+60;ITSA3;Itaúsa S.A.;Financeiro
+61;ITSA4;Itaúsa S.A.;Financeiro
+62;ITUB3;Itaú Unibanco Holding S.A.;Financeiro
+63;ITUB4;Itaú Unibanco Holding S.A.;Financeiro
+64;JHSF3;JHSF Participações S.A.;Consumo Cíclico
+65;KEPL3;Kepler Weber S.A.;Bens Industriais
+66;KLBN4;Klabin S.A.;Materiais Básicos
+67;LAND3;Terra Santa Propriedades Agrícolas S.A.;Consumo Não Cíclico
+68;LIGT3;Light S.A.;Utilidade Pública
+69;LOGN3;Log-In Logística Intermodal S.A.;Bens Industriais
+70;LPSB3;LPS Brasil – Consultoria de Imóveis S.A.;Consumo Cíclico
+71;LREN3;Lojas Renner S.A.;Consumo Cíclico
+72;LUPA3;Lupatech S.A.;Petróleo, Gás e Biocombustíveis
+73;MBRF3;MBRF Global Foods Company S.A.;Consumo Não Cíclico
+74;MDIA3;M. Dias Branco S.A. Ind. e Com. de Alimentos;Consumo Não Cíclico
+75;MILS3;Mills Estruturas e Serviços de Engenharia S.A.;Bens Industriais
+76;MOTV3;Telequality Participações S.A.*;Comunicações
+77;MRVE3;MRV Engenharia e Participações S.A.;Consumo Cíclico
+78;MULT3;Multiplan Empreendimentos Imobiliários S.A.;Consumo Cíclico
+79;MYPK3;Iochpe-Maxion S.A.;Bens Industriais
+80;NATU3;Natura Cosméticos S.A.;Consumo Não Cíclico
+81;NEXP3;Nexen Pneus do Brasil S.A.*;Consumo Cíclico
+82;ODPV3;Odontoprev S.A.;Saúde
+83;OIBR3;Oi S.A.;Comunicações
+84;OIBR4;Oi S.A.;Comunicações
+85;PDGR3;PDG Realty S.A. Empreendimentos e Participações;Consumo Cíclico
+86;PDTC3;Padtec Holding S.A.;Tecnologia da Informação
+87;PETR3;Petróleo Brasileiro S.A. – Petrobras;Petróleo, Gás e Biocombustíveis
+88;PETR4;Petróleo Brasileiro S.A. – Petrobras;Petróleo, Gás e Biocombustíveis
+89;PFRM3;Profarma Distribuidora de Produtos Farmacêuticos S.A.;Saúde
+90;PINE4;Banco Pine S.A.;Financeiro
+91;PMAM3;Paranapanema S.A.;Materiais Básicos
+92;POMO3;Marcopolo S.A.;Bens Industriais
+93;POMO4;Marcopolo S.A.;Bens Industriais
+94;POSI3;Positivo Tecnologia S.A.;Tecnologia da Informação
+95;PSSA3;Porto Seguro S.A.;Financeiro
+96;PTBL3;Portobello S.A.;Materiais Básicos
+97;RADL3;Raia Drogasil S.A.;Saúde
+98;RAPT4;Randon S.A. Implementos e Participações;Bens Industriais
+99;RCSL4;Recrusul S.A.;Bens Industriais
+100;RDNI3;RDI Negócios Imobiliários S.A.*;Consumo Cíclico
+101;RENT3;Localiza Rent a Car S.A.;Consumo Cíclico
+102;RIAA3;Guararapes Confecções S.A.;Consumo Cíclico
+103;ROMI3;Indústrias Romi S.A.;Bens Industriais
+104;RPMG3;Refinaria de Petróleos de Manguinhos S.A.;Petróleo, Gás e Biocombustíveis
+105;RSID3;Rossi Residencial S.A.;Consumo Cíclico
+106;SANB11;Banco Santander (Brasil) S.A.;Financeiro
+107;SANB3;Banco Santander (Brasil) S.A.;Financeiro
+108;SANB4;Banco Santander (Brasil) S.A.;Financeiro
+109;SAPR4;Companhia de Saneamento do Paraná – SANEPAR;Utilidade Pública
+110;SBSP3;Cia de Saneamento Básico do Estado de São Paulo – SABESP;Utilidade Pública
+111;SCAR3;São Carlos Empreendimentos e Participações S.A.;Consumo Cíclico
+112;SHUL4;Schulz S.A.;Bens Industriais
+113;SIMH3;Simpar S.A.;Bens Industriais
+114;SLCE3;SLC Agrícola S.A.;Consumo Não Cíclico
+115;SMTO3;São Martinho S.A.;Consumo Não Cíclico
+116;TASA4;Tensacalho S.A.*;Materiais Básicos
+117;TCSA3;Tecnisa S.A.;Consumo Cíclico
+118;TELB4;Telecomunicações Brasileiras S.A. – Telebras;Comunicações
+119;TGMA3;Tegma Gestão Logística S.A.;Bens Industriais
+120;TIMS3;TIM S.A.;Comunicações
+121;TOTS3;Totvs S.A.;Tecnologia da Informação
+122;TPIS3;Triunfo Participações e Investimentos S.A.;Bens Industriais
+123;TRIS3;Trisul S.A.;Consumo Cíclico
+124;TUPY3;Tupy S.A.;Bens Industriais
+125;UNIP6;Unipar Carbocloro S.A.;Materiais Básicos
+126;USIM3;Usinas Siderúrgicas de Minas Gerais S.A. – USIMINAS;Materiais Básicos
+127;USIM5;Usinas Siderúrgicas de Minas Gerais S.A. – USIMINAS;Materiais Básicos
+128;VALE3;Vale S.A.;Materiais Básicos
+129;VIVR3;Viver Incorporadora e Construtora S.A.;Consumo Cíclico
+130;VIVT3;Telefônica Brasil S.A. (VIVO);Comunicações
+131;VLID3;Valid Soluções S.A.;Tecnologia da Informação
+132;VSTE3;Veste S.A.;Consumo Cíclico
+133;WEGE3;WEG S.A.;Bens Industriais
+134;WHRL4;Whirlpool S.A.;Consumo Cíclico
+135;YDUQ3;Yduqs Participações S.A.;Consumo Cíclico

@@ -1,0 +1,4 @@
+Teste,H₀,Estat.,p-valor,Decisão,Observação
+Jobson-Korkie/Memmel,SR_strat = SR_IBOV,1.2991050280864236,0.19390788779344792,Não rejeita H₀ ✗,Placeholder sintético
+"CAPM α (NW, rf variável)",α = 0,1.2467729452840197,0.21248076327394916,Não rejeita H₀ ✗,Placeholder sintético
+Spanning Huberman-Kandel (F),α=0 e β=1 (conjunto),1411.899455111476,0.0,Rejeita H₀ — efeito significativo ✓,Placeholder sintético

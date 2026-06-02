@@ -1,0 +1,34 @@
+# =============================================================================
+# Dependências do pipeline (TCC) — instalar com:
+#     pip install -r requirements.txt
+#
+# Python >= 3.10 recomendado.
+# Versões indicadas como pisos mínimos (>=) compatíveis com os recursos usados.
+# Para reprodutibilidade do apêndice, após instalar, trave as versões exatas do
+# SEU ambiente com:
+#     pip freeze > requirements-lock.txt
+# =============================================================================
+
+# --- Núcleo de dados e cálculo numérico ---
+pandas>=2.0          # manipulação de séries/painéis (todos os notebooks)
+numpy>=1.24          # álgebra/operações vetoriais (todos)
+scipy>=1.10          # estatística (2_1, 3_2/11_1)
+
+# --- Econometria e modelagem ---
+statsmodels>=0.14    # ADF, KPSS, CAPM/OLS com Newey-West (2_1, 3_2/11_1)
+arch>=6.0            # GARCH / GJR-GARCH / EGARCH (3_2/11_1)
+
+# --- Visualização ---
+matplotlib>=3.7      # gráficos (2_1, 3_1, 3_2/11_1, 4_1)
+
+# --- Download de dados (API SGS / Banco Central) ---
+requests>=2.31       # requisições HTTP à API do SGS (2_1)
+urllib3>=2.0         # importado em 2_1 (controle de avisos SSL)
+
+# --- Entrada/saída de arquivos ---
+pyarrow>=12.0        # engine de leitura/gravação Parquet (4_1, 5_1, 4_5)
+openpyxl>=3.1        # leitura de planilhas Excel da Economatica (1_1)
+
+# --- Ambiente de execução dos notebooks ---
+jupyterlab>=4.0      # interface para rodar os .ipynb
+ipykernel>=6.0       # kernel Python para os notebooks

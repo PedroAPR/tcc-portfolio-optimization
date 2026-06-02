@@ -1,0 +1,227 @@
+=== CODE CELLS OF NOTEBOOK 6b ===
+
+=== CELL 2 ===
+import sys, platform
+import numpy as np, pandas as pd, scipy
+from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+try:
+    import cvxpy as cp
+    CVXPY_OK = True
+    _SOLVERS = [s for s in ("CLARABEL","ECOS","SCS") if s in cp.installed_solvers()]
+except Exception as e:
+    CVXPY_OK = False; _SOLVERS=[]
+    print(f"[AVISO] cvxpy indisponível ({e}); a fronteira média-CVaR será pulada.")
+SEED=42; np.random.seed(SEED)
+print("Python", sys.version.split()[0], "| numpy", np.__version__, "| pandas", pd.__version__,
+      "| scipy", scipy.__version__, "| cvxpy", (cp.__version__ if CVXPY_OK else "AUSENTE"))
+
+=== CELL 4 ===
+from pathlib import Path
+parent_path  = Path.cwd().parent.parent
+DIR_RETORNOS = parent_path / "data" / "Retornos"
+OUTPUT_DIR   = parent_path / "data" / "Estrategias"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+TRADING_DAYS     = 252
+JANELA_FRONTEIRA = "completa"   # DECISÃO: μ,Σ sobre 2010–2025 (fotografia mais representativa)
+N_MONTECARLO     = 50_000
+N_PONTOS_FRONT   = 60           # nº de retornos-alvo varridos no contorno
+ATIVOS_NUVEM     = 10           # subconjunto p/ Monte Carlo legível (a fronteira usa os 118)
+ALPHA            = 0.95         # nível de confiança do CVaR
+TETO_PESO        = 0.10         # CVM 175
+RF_ANUAL         = None         # DECISÃO: se None, usa o CDI médio anualizado do período
+DIRICHLET_ALPHA  = 0.30         # <1 espalha a nuvem (evita colapso em 1/N)
+print(f"[OK] janela={JANELA_FRONTEIRA} | MC={N_MONTECARLO} sobre {ATIVOS_NUVEM} ativos | "
+      f"front={N_PONTOS_FRONT} pts | alpha={ALPHA} | teto={TETO_PESO:.0%}")
+
+=== CELL 6 ===
+def _ler(nome, col=None):
+    pq, csv = DIR_RETORNOS / f"{nome}.parquet", DIR_RETORNOS / f"{nome}.csv"
+    df = (pd.read_parquet(pq) if pq.exists()
+          else pd.read_csv(csv, index_col=0, parse_dates=True))
+    df.index = pd.to_datetime(df.index)
+    return df[col] if col else df
+
+ret = _ler("retornos_simples_saneado").sort_index()
+try:
+    rf_d = _ler("rf_diario", "cdi_diario").reindex(ret.index).dropna()
+    rf_anual = RF_ANUAL if RF_ANUAL is not None else float(rf_d.mean()*TRADING_DAYS)
+except Exception:
+    rf_anual = RF_ANUAL if RF_ANUAL is not None else 0.10
+N = ret.shape[1]
+print(f"Retornos: {ret.shape[0]} pregões × {N} ativos | rf anual usado = {rf_anual:.4f}")
+
+=== CELL 8 ===
+def ledoit_wolf(X):
+    X=np.asarray(X,float); T,n=X.shape; Xc=X-X.mean(0); S=(Xc.T@Xc)/T
+    m=np.trace(S)/n; F=m*np.eye(n); d2=np.sum((S-F)**2)/n
+    sq=(Xc**2).sum(1); quad=np.einsum('ti,ij,tj->t',Xc,S,Xc)
+    b2=(np.sum(sq**2)-2*np.sum(quad)+T*np.sum(S**2))/(n*T**2)
+    delta=min(b2,d2)/d2 if d2>0 else 0.0; return delta*F+(1-delta)*S
+
+R   = ret.values
+mu  = R.mean(0) * TRADING_DAYS
+Sig = ledoit_wolf(R) * TRADING_DAYS
+def port_ret(w): return float(w @ mu)
+def port_vol(w): return float(np.sqrt(w @ Sig @ w))
+print(f"μ: média anual={mu.mean():.4f} [{mu.min():.3f}, {mu.max():.3f}] | "
+      f"vol média anual={np.sqrt(np.diag(Sig)).mean():.4f}")
+
+=== CELL 10 ===
+rng = np.random.default_rng(SEED)
+# subconjunto: ativos de menor a maior vol, amostrados uniformemente (proxy de "1 por perfil")
+ordem = np.argsort(np.diag(Sig))
+idx_sub = ordem[np.linspace(0, N-1, ATIVOS_NUVEM).astype(int)]
+mu_s, Sig_s = mu[idx_sub], Sig[np.ix_(idx_sub, idx_sub)]
+W = rng.dirichlet(np.full(ATIVOS_NUVEM, DIRICHLET_ALPHA), size=N_MONTECARLO)
+mc_ret = W @ mu_s
+mc_vol = np.sqrt(np.einsum('ij,jk,ik->i', W, Sig_s, W))
+mc_sharpe = (mc_ret - rf_anual) / mc_vol
+print(f"Nuvem: {N_MONTECARLO} carteiras sobre {ATIVOS_NUVEM} ativos | "
+      f"vol[{mc_vol.min():.3f},{mc_vol.max():.3f}] ret[{mc_ret.min():.3f},{mc_ret.max():.3f}]")
+
+=== CELL 12 ===
+_sum = {"type":"eq","fun":lambda w: w.sum()-1.0}
+def _bounds(teto=None): hi = teto if teto is not None else 1.0; return [(0.0,hi)]*N
+w0 = np.repeat(1/N, N)
+
+def min_var(teto=None, ret_alvo=None):
+    cons=[_sum]
+    if ret_alvo is not None: cons.append({"type":"eq","fun":lambda w,a=ret_alvo: w@mu-a})
+    r=minimize(lambda w:w@Sig@w, w0, method="SLSQP", bounds=_bounds(teto),
+               constraints=cons, options={"maxiter":600,"ftol":1e-11})
+    return r.x/r.x.sum()
+
+def max_sharpe(teto=None):
+    def neg(w): v=port_vol(w); return -((w@mu-rf_anual)/v) if v>0 else 0.0
+    r=minimize(neg, w0, method="SLSQP", bounds=_bounds(teto),
+               constraints=[_sum], options={"maxiter":800,"ftol":1e-11})
+    return r.x/r.x.sum()
+
+w_mvp = min_var()
+w_tan = max_sharpe()
+w_tan10 = max_sharpe(TETO_PESO)
+
+alvos = np.linspace(port_ret(w_mvp), mu.max()*0.98, N_PONTOS_FRONT)
+fmv=[]
+for a in alvos:
+    w=min_var(ret_alvo=a)
+    if abs(w@mu-a) < 1e-3: fmv.append((port_vol(w), port_ret(w)))
+fmv=np.array(fmv)
+print(f"Fronteira MV: {len(fmv)} pontos")
+print(f"  MVP      vol={port_vol(w_mvp):.4f} ret={port_ret(w_mvp):.4f}")
+print(f"  Tangente vol={port_vol(w_tan):.4f} ret={port_ret(w_tan):.4f} "
+      f"Sharpe={(port_ret(w_tan)-rf_anual)/port_vol(w_tan):.4f} "
+      f"| maior peso={w_tan.max():.3f}, nº ativos>1%={(w_tan>0.01).sum()}")
+print(f"  Tangente_c10 maior peso={w_tan10.max():.3f}, nº ativos>1%={(w_tan10>0.01).sum()} (mais diversificada)")
+
+=== CELL 14 ===
+def min_cvar(ret_alvo=None, teto=None):
+    if not CVXPY_OK: return None
+    T=R.shape[0]; w=cp.Variable(N); z=cp.Variable(); u=cp.Variable(T, nonneg=True)
+    cons=[cp.sum(w)==1, u>=(-R@w)-z, w>=0]
+    if teto: cons += [w<=teto]
+    if ret_alvo is not None: cons += [w@mu >= ret_alvo]
+    cvar=z+(1.0/((1-ALPHA)*T))*cp.sum(u)
+    p=cp.Problem(cp.Minimize(cvar),cons)
+    for s in _SOLVERS:
+        try:
+            p.solve(solver=getattr(cp,s))
+            if p.status in ("optimal","optimal_inaccurate"): break
+        except Exception: continue
+    if w.value is None: return None
+    return np.clip(np.asarray(w.value).flatten(),0,None)
+
+def cvar_diario(w):
+    perdas=-R@w; var=np.quantile(perdas,ALPHA); return float(perdas[perdas>=var].mean())
+
+fcvar=[]; w_mincvar=None
+if CVXPY_OK:
+    w_mincvar = min_cvar()
+    w_mincvar = w_mincvar/w_mincvar.sum()
+    for a in np.linspace(port_ret(w_mincvar), mu.max()*0.95, max(20, N_PONTOS_FRONT//2)):
+        w=min_cvar(ret_alvo=a)
+        if w is not None and abs(w.sum()-1)<1e-3:
+            fcvar.append((cvar_diario(w/w.sum()), port_ret(w/w.sum())))
+    fcvar=np.array(fcvar)
+    print(f"Fronteira média-CVaR: {len(fcvar)} pontos | "
+          f"min-CVaR: CVaR_diário={cvar_diario(w_mincvar):.5f} ret={port_ret(w_mincvar):.4f}")
+else:
+    print("[AVISO] cvxpy ausente — fronteira média-CVaR pulada.")
+
+=== CELL 16 ===
+n_panels = 2 if (CVXPY_OK and len(fcvar) > 0) else 1
+fig, axs = plt.subplots(1, n_panels, figsize=((13, 5.2) if n_panels == 2 else (7.5, 5.5)))
+axes = np.atleast_1d(axs)
+ax0 = axes[0]
+sc = ax0.scatter(mc_vol, mc_ret, c=mc_sharpe, s=6, alpha=0.35, cmap="viridis", rasterized=True)
+ax0.plot(fmv[:,0], fmv[:,1], "-", color="crimson", lw=2.2, label="Fronteira MV (118 ativos)")
+ax0.scatter([port_vol(w_mvp)],[port_ret(w_mvp)], marker="D", s=90, color="navy", zorder=5,
+            label="Mínima Variância (MVP)")
+ax0.scatter([port_vol(w_tan)],[port_ret(w_tan)], marker="*", s=240, color="gold",
+            edgecolor="black", zorder=5, label="Tangente (Máx. Sharpe)")
+ax0.scatter([port_vol(w_tan10)],[port_ret(w_tan10)], marker="P", s=120, color="darkorange",
+            edgecolor="black", zorder=5, label="Tangente c/ teto 10% (CVM)")
+# CML: do rf à tangente, estendida
+x_cml=np.linspace(0, port_vol(w_tan)*1.4, 50)
+sh_t=(port_ret(w_tan)-rf_anual)/port_vol(w_tan)
+ax0.plot(x_cml, rf_anual+sh_t*x_cml, "--", color="gray", lw=1.6, label="Capital Market Line")
+ax0.scatter([0],[rf_anual], marker="o", s=50, color="black", zorder=5)
+ax0.annotate(f"Tangente concentrada\n(maior peso {w_tan.max():.0%}, {(w_tan>0.01).sum()} ativos>1%)\n→ 'maximização de erros'",
+             xy=(port_vol(w_tan),port_ret(w_tan)), xytext=(port_vol(w_tan)*1.05, port_ret(w_tan)*0.78),
+             fontsize=8, arrowprops=dict(arrowstyle="->", color="black"))
+ax0.set_xlabel("Volatilidade anual (σ)"); ax0.set_ylabel("Retorno esperado anual (μ)")
+ax0.set_title("Espaço média-variância (MPT)"); ax0.legend(fontsize=7.5, loc="lower right"); ax0.grid(alpha=0.3)
+fig.colorbar(sc, ax=ax0, label="Sharpe", fraction=0.046, pad=0.04)
+if CVXPY_OK and len(fcvar)>0:
+    ax1=axes[1]
+    ax1.plot(fcvar[:,0], fcvar[:,1], "-o", color="teal", ms=3, lw=2, label="Fronteira média-CVaR (118 ativos)")
+    ax1.scatter([cvar_diario(w_mincvar)],[port_ret(w_mincvar)], marker="D", s=90, color="purple",
+                zorder=5, label="Mínimo CVaR")
+    ax1.set_xlabel(f"CVaR diário (α={ALPHA:.0%})"); ax1.set_ylabel("Retorno esperado anual (μ)")
+    ax1.set_title("Espaço média-CVaR (PMPT)"); ax1.legend(fontsize=8); ax1.grid(alpha=0.3)
+    FIGURA_COMPLETA = True
+else:
+    # SALVAGUARDA: o painel média-CVaR (PMPT) não foi gerado. Estampa um aviso VISÍVEL na
+    # própria figura para que um run incompleto não seja confundido com a versão final.
+    # Causa típica: cvxpy ausente no ambiente (p.ex. Python sem wheel do cvxpy). Reexecute
+    # no mesmo ambiente do NB6 (cvxpy instalado) para produzir os dois painéis.
+    FIGURA_COMPLETA = False
+    motivo = ("cvxpy ausente no ambiente" if not CVXPY_OK
+              else "fronteira CVaR vazia (solver não convergiu)")
+    ax0.text(0.5, -0.16,
+             f"⚠ FIGURA PARCIAL — painel média-CVaR (PMPT) NÃO gerado: {motivo}.\n"
+             "Reexecute em ambiente com cvxpy para a versão final (dois painéis).",
+             transform=ax0.transAxes, ha="center", va="top", fontsize=9, color="darkred",
+             bbox=dict(boxstyle="round,pad=0.5", facecolor="mistyrose",
+                       edgecolor="darkred", lw=1.2))
+    print(f"[ALERTA] FIGURA PARCIAL: painel CVaR ausente ({motivo}). Os artefatos "
+          "fronteira_cvar_pontos.csv e a carteira MinCVaR também não serão gerados.")
+
+_titulo = "Fronteira Eficiente — universo investável da B3 (in-sample, 2010–2025)"
+if not FIGURA_COMPLETA:
+    _titulo += "  [PARCIAL: sem painel CVaR]"
+fig.suptitle(_titulo, fontsize=12, color=("black" if FIGURA_COMPLETA else "darkred"))
+fig.tight_layout()
+plt.savefig(OUTPUT_DIR / "fronteira_eficiente.png", dpi=150, bbox_inches="tight")
+plt.savefig(OUTPUT_DIR / "fronteira_eficiente.svg", bbox_inches="tight")
+print("[OK] figura salva em", OUTPUT_DIR)
+plt.show()
+
+=== CELL 18 ===
+pd.DataFrame(fmv, columns=["vol","ret"]).to_csv(OUTPUT_DIR/"fronteira_mv_pontos.csv", index=False)
+if CVXPY_OK and len(fcvar)>0:
+    pd.DataFrame(fcvar, columns=["cvar_diario","ret"]).to_csv(OUTPUT_DIR/"fronteira_cvar_pontos.csv", index=False)
+canon = {"MVP": w_mvp, "Tangente": w_tan, "Tangente_c10": w_tan10}
+if CVXPY_OK and w_mincvar is not None: canon["MinCVaR"] = w_mincvar
+linhas=[]
+tickers=[c.replace("ACAO_","") for c in ret.columns]
+for nome,w in canon.items():
+    linhas.append({"carteira":nome, "ret_anual":port_ret(w), "vol_anual":port_vol(w),
+                   "sharpe":(port_ret(w)-rf_anual)/port_vol(w), "maior_peso":float(w.max()),
+                   "n_ativos_>1pct":int((w>0.01).sum())})
+pd.DataFrame(linhas).to_csv(OUTPUT_DIR/"carteiras_canonicas.csv", index=False, float_format="%.6f")
+print("[OK] fronteira_mv_pontos.csv, carteiras_canonicas.csv"
+      + (", fronteira_cvar_pontos.csv" if CVXPY_OK and len(fcvar)>0 else ""))
+

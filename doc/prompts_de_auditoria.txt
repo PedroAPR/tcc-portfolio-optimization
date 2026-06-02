@@ -1,0 +1,89 @@
+===========================================================================================================================================================
+Prompt para o Notebook 1: Tratamento e Liquidez
+
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Faça uma auditoria rigorosa do Jupyter Notebook fornecido, que compõe a primeira etapa de um TCC sobre otimização de carteiras na B3 (2010–2025). 
+
+Seu objetivo é analisar profundamente o código Python e reescrever todo o texto em Markdown para que reflita com exatidão as operações realizadas, adotando um tom estritamente formal, técnico e acadêmico. 
+
+Diretrizes da revisão:
+1. Contraste o texto atual com o código para garantir que a explicação sobre o filtro de liquidez financeira (ADTV no decil inferior) e o critério de presença em pregão estejam matematicamente e logicamente corretos no Markdown.
+2. Certifique-se de que a justificativa para a prevenção do viés de sobrevivência (survivorship bias) e do viés de antecipação (lookahead bias) esteja claramente documentada nas células de texto, espelhando as funções de exclusão de ativos e o log de auditoria do código.
+3. Formate as equações ou critérios de corte utilizando LaTeX quando apropriado.
+4. Ao finalizar a revisão e atualização de todo o documento, sugira um novo nome para o arquivo que substitua a nomenclatura de rascunho por uma versão definitiva e padronizada, preferencialmente adotando o formato: "01_Ingestao_Filtro_Liquidez_Final.ipynb".
+
+Entregue o conteúdo do novo notebook revisado ou o código-fonte (JSON/IPYNB) contendo os markdowns corrigidos.
+===========================================================================================================================================================
+Prompt para o Notebook 2: Séries do SGS (CDI e SELIC)
+
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Faça uma auditoria rigorosa do Jupyter Notebook fornecido, focado na extração e análise econométrica de taxas livres de risco (CDI e SELIC) via API do Banco Central do Brasil.
+
+Seu objetivo é sincronizar e elevar o nível acadêmico do Markdown em relação ao código Python implementado.
+
+Diretrizes da revisão:
+1. Documente explicitamente no Markdown as soluções implementadas no código para contornar os limites de paginação da API do SGS introduzidos recentemente (limite de 10 anos).
+2. Valide e descreva com rigor técnico formal os testes econométricos presentes no código (Dickey-Fuller Aumentado, KPSS), esclarecendo a constatação empírica de que as séries possuem perfil I(1).
+3. Assegure que as explicações sobre os testes de integridade da série (ausência de valores nulos, aderência ao calendário do Copom e spread entre CDI e SELIC over) estejam formalmente redigidas e fundamentadas nos resultados das células de código.
+4. Renomeie internamente o documento e forneça a sugestão do novo arquivo finalizado, adotando o formato: "02_Taxas_Livres_Risco_SGS_Final.ipynb".
+
+
+===========================================================================================================================================================
+Prompt para o Notebook 3: Consolidação do IBOVESPA
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Revise o Jupyter Notebook fornecido, que realiza a estruturação do benchmark primário (IBOVESPA) a partir de dados brutos da B3.
+
+Diretrizes da revisão:
+1. O código trata particularidades de formatação da B3 (encoding ISO-8859-1 e layout em matriz de meses x dias). Reescreva o Markdown para detalhar tecnicamente esse processo de engenharia de dados (operações de 'melt' e transformação para série temporal).
+2. Documente formalmente a distinção calculada no código entre retornos simples (discretos) e retornos logarítmicos contínuos, justificando seus usos posteriores na pesquisa.
+3. Certifique-se de que a contagem exata de pregões válidos identificada no código esteja refletida no texto, garantindo consistência técnica para a redação da metodologia do trabalho.
+4. Forneça o conteúdo com os markdowns revisados e indique o nome final do arquivo como: "03_Consolidacao_IBOV_Benchmark_Final.ipynb".
+===========================================================================================================================================================
+Prompt para o Notebook 4_5: Alinhamento e Winsorização
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Realize uma inspeção profunda neste Jupyter Notebook que trata do alinhamento do painel de dados, cálculo de retornos e saneamento de outliers (winsorização robusta).
+
+Diretrizes da revisão:
+1. O código contém uma evolução metodológica crítica: o cálculo do desvio absoluto mediano (MAD) para a winsorização agora atua exclusivamente sobre observações não-nulas. Reescreva o Markdown para explicar detalhadamente por que essa abordagem evita a sobre-winsorização de ativos ilíquidos, utilizando linguagem formal.
+2. Descreva rigorosamente como o código trata os retornos extremos decorrentes de eventos corporativos (grupamentos, distress financeiro), refletindo o log de integridade gerado pelo script.
+3. Estruture o texto explicativo de modo que sirva como um apêndice metodológico irretocável para um TCC.
+4. Consolide o documento final e sugira a nomenclatura definitiva: "04_Alinhamento_Winsorizacao_Robusta_Final.ipynb".
+
+
+===========================================================================================================================================================
+Prompt para o Notebook 5: Momentos e Covariância (Ledoit-Wolf)
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Auditoria solicitada para o Jupyter Notebook focado na estimação de parâmetros de otimização (vetor de retornos esperados e matriz de covariância).
+
+Diretrizes da revisão:
+1. Analise o código que implementa o estimador de encolhimento (shrinkage) de Ledoit e Wolf (2004). O Markdown deve ser atualizado para justificar formalmente o uso deste estimador devido ao mau condicionamento da matriz de covariância amostral (razão T/N inadequada em janelas móveis).
+2. Esclareça matematicamente no texto a restrição do uso estrito de retornos simples para agregação transversal em carteiras, conforme evidenciado pela lógica de programação, contrastando com o uso de log-retornos para modelagem longitudinal.
+3. Revise as fórmulas em LaTeX no Markdown, garantindo que a notação matricial esteja em conformidade com a literatura de Modern Portfolio Theory (MPT).
+4. Forneça o arquivo revisado com o nome definitivo: "05_Estimacao_Parametros_LedoitWolf_Final.ipynb".
+===========================================================================================================================================================
+Prompt para o Notebook 6: Otimização e Backtest
+
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Audite detalhadamente o Jupyter Notebook de otimização de portfólios, que contém o núcleo duro do backtest da pesquisa.
+
+Diretrizes da revisão:
+1. Identifique no código a correção implementada na função-objetivo da carteira de Máximo Sharpe (onde o denominador foi ajustado para refletir a verdadeira volatilidade da carteira baseada na matriz de covariância). Descreva esta correção no Markdown de forma técnica, indicando como isso evita soluções de canto.
+2. O código submete os otimizadores a duas condições: irrestrito e com teto de concentração de 10% (em analogia à Resolução CVM nº 175/2022). Documente essa modelagem institucional e legal de forma explícita e formal nas células explicativas.
+3. Revise a descrição do rebalanceamento mensal e da apropriação de custos de transação para que o texto espelhe perfeitamente a execução dos loops em Python.
+4. Apresente o resultado final adotando a nomenclatura padrão: "06_Otimizacao_Carteiras_Backtest_Final.ipynb".
+===========================================================================================================================================================
+Prompt para o Notebook 7: Análise Econométrica
+
+Atue como um Cientista de Dados Financeiro Sênior e Revisor Acadêmico. Proceda com a revisão final do Jupyter Notebook focado na inferência estatística de desempenho das estratégias otimizadas.
+
+Diretrizes da revisão:
+1. O código utiliza o CDI diário real flutuante em vez de uma taxa livre de risco constante. Reescreva o Markdown para aprofundar a justificativa técnica dessa escolha e como ela impacta as regressões de desempenho, o prêmio de risco e o Índice de Sharpe.
+2. Certifique-se de que a documentação das regressões CAPM (com erros-padrão de Newey-West), do teste de Jobson-Korkie (correção de Memmel) e da modelagem de volatilidade GARCH/EGARCH do IBOVESPA esteja descrita com o mais alto rigor econométrico.
+3. Ajuste o tom do documento para que suas conclusões estejam perfeitamente amparadas pelas métricas de p-valor e estatísticas-t geradas nos outputs das células.
+4. Disponibilize a versão final revisada recomendando a alteração do nome do arquivo para: "07_Inferencia_Econometrica_Desempenho_Final.ipynb".
+
+===========================================================================================================================================================
+
+
+
+===========================================================================================================================================================

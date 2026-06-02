@@ -1,0 +1,169 @@
+Relatos Metodológicos:
+===========================================================================================================================================================
+01_Ingestao_Filtro_Liquidez_Final.ipynb
+
+### 3.1. Seleção da Amostra e Definição do Universo Investável
+
+A construção da base de dados utilizada nesta pesquisa seguiu um protocolo rigoroso de filtragem e sanitização estatística, aplicado sobre os dados brutos de cotações diárias de ativos extraídos da plataforma Economatica. A janela amostral compreende o período de 1º de janeiro de 2010 a 31 de dezembro de 2025, totalizando 3.967 pregões válidos após o expurgo de feriados nacionais. 
+
+Para mitigar problemas associados ao mau condicionamento de matrizes de covariância e distorções decorrentes de ativos de baixíssima liquidez, o universo de ativos elegíveis passou por um funil de seleção sequencial composto por três critérios objetivos e uniformes, descritos a seguir.
+
+#### 3.1.1. Filtro de Presença em Pregão (Liquidez em Frequência)
+
+O primeiro critério avalia a assiduidade negocial de cada ativo longitudinalmente ao longo de todo o horizonte temporal. Define-se a métrica de Presença ($Pr_{i}$) como a razão entre o número de pregões em que o ativo $i$ registrou cotação de fechamento válida ($N_{neg,i}$) e o total absoluto de pregões apurados na série histórica ($N_{total}$). Foram admitidos apenas os ativos que satisfizessem a seguinte restrição:
+
+$$Pr_{i} = \frac{N_{neg,i}}{N_{total}} \geq 0,95$$
+
+A imposição deste limiar severo de 95% é crucial para evitar o cálculo de correlações espúrias e para mitigar o efeito de "preços fantasmas", comum em ativos com negociação episódica na B3.
+
+#### 3.1.2. Controle do Viés de Antecipação (*Lookahead Bias*)
+
+Para garantir que o modelo utilize estritamente informações disponíveis no momento de cada alocação temporal, controlou-se o viés de antecipação (*lookahead bias*). Excluiu-se da amostra inicial qualquer ativo cujo primeiro pregão com negociação registrada ($t_{0,i}$) tenha ocorrido após o início efetivo da janela de análise ($t_{start}$):
+
+$$t_{0,i} \leq t_{start}$$
+
+Este filtro elimina empresas oriundas de ofertas públicas iniciais (IPOs) tardias, impossibilitando que o otimizador incorpore ativos sem histórico completo de calibração para as matrizes de covariância iniciais.
+
+#### 3.1.3. Filtro de Volume Financeiro e Controle do Viés de Sobrevivência (*Survivorship Bias*)
+
+A profundidade financeira da amostra foi controlada por meio do cálculo do Volume Diário Médio Negociado (ADTV — *Average Daily Traded Value*). Sob a perspectiva estatística de portfólios, a inclusão de *microcaps* introduz um risco de cauda assimétrico que contamina o vetor de retornos esperados. 
+
+Para neutralizar o viés de sobrevivência (*survivorship bias*), conforme discutido por Brown, Goetzmann e Ross (1992), o ADTV do ativo $i$ foi mensurado exclusivamente de forma *ex-ante*, utilizando os dados da janela de formação fixa correspondente ao ano de 2010 ($N_{2010}$). Dias sem negociação dentro deste período foram computados como volume nulo ($V_{i,t} = 0$). A formulação matemática do estimador é dada por:
+
+$$ADTV_{i} = \frac{1}{N_{2010}} \sum_{t \in 2010} V_{i,t}$$
+
+A exclusão de ativos baseou-se em um critério puramente relativo e transversal (*cross-section*), eliminando-se os papéis pertencentes ao decil inferior ($P_{10}$) da distribuição de volume:
+
+$$ADTV_{i} \geq P_{10}(ADTV)$$
+
+A ancoragem deste filtro no ano inicial assegura que a elegibilidade do ativo dependa estritamente de suas características de liquidez no ingresso da amostra. Consequentemente, empresas que vieram a sofrer descontinuidade operacional, recuperação judicial ou fechamento de capital nos anos posteriores permanecem elegíveis e computadas na matriz até o seu último pregão disponível, preservando a coerência empírica do *backtesting*.
+
+#### 3.1.4. Imputação Residual (*Forward Fill*)
+
+Após a aplicação do funil de liquidez, lacunas intradiárias residuais causadas por pregões específicos sem negociação foram tratadas por meio do método de imputação determinística de preenchimento para frente (*forward fill*). Sob a premissa de eficiência de mercado fraca, o preço de fechamento no dia $t$ sem negócio replica integralmente o último preço de fechamento válido disponível no dia $t-k$, assumindo o custo de carrego neutro do ativo spot até a ocorrência de uma nova transação.
+
+===========================================================================================================================================================
+02_Taxas_Livres_Risco_SGS_Final.ipynb
+
+
+## 5. Estruturação Textual para o Trabalho de Conclusão de Curso
+
+Abaixo, o escopo da auditoria é desmembrado em duas frentes redacionais distintas: a primeira destinada ao arcabouço metodológico do trabalho e a segunda ao documento de comprovação técnica em anexo.
+
+### 5.1. Relato Metodológico (Inclusão no Capítulo de Metodologia)
+
+> A coleta das séries temporais correspondentes às taxas livres de risco (CDI e SELIC *over*) foi operacionalizada de forma automatizada via interface de programação de aplicações (API) do Sistema Gerenciador de Séries Temporais (SGS) do Banco Central do Brasil (BCB). Em virtude de restrições estruturais de paginação da referida interface — especificamente, o limite temporal decenal por requisição —, desenvolveu-se um algoritmo de particionamento temporal com tolerância a falhas de rede e decaimento exponencial (*exponential backoff*). 
+> 
+> Após a extração consolidada do período de 02 de janeiro de 2010 a 31 de dezembro de 2025, os dados foram submetidos a um rigoroso protocolo de saneamento e validação empírica, com escrutínio direcionado à verificação de *spreads* anômalos e possíveis vieses de truncamento associados ao limite inferior (*zero lower bound*) observado no ano de 2020. A aderência estatística das séries foi atestada mediante testes de estacionariedade (Dickey-Fuller Aumentado e KPSS), validando a premissa teórica de integração de primeira ordem, $I(1)$. Adicionalmente, empregaram-se testes não-paramétricos (Wilcoxon) e paramétricos corrigidos (Welch) para atestar a identidade de distribuição entre as grandezas interbancárias, assegurando a robustez do insumo paramétrico ($r_f$) para a subsequente mensuração de retornos em excesso.
+
+---
+
+
+
+
+===========================================================================================================================================================
+03_Consolidacao_IBOV_Benchmark_Final.ipynb
+
+### 3.2. Coleta, Tratamento de Dados e Estruturação do Benchmark Primário
+
+Para a consecução das simulações de *backtesting* e otimização de portfólios propostas neste estudo, definiu-se o Índice Bovespa (IBOVESPA) como o *benchmark* primário de mercado. As cotações históricas diárias de fechamento foram extraídas diretamente do repositório oficial de Market Data da B3 (Brasil, Bolsa, Balcão), compreendendo o recorte temporal de janeiro de 2010 a dezembro de 2025.
+
+Os dados brutos fornecidos pela bolsa de valores brasileira apresentam uma estrutura tabular em formato matricial (*wide-format*), segmentada em arquivos anuais. Consequentemente, foi necessário o desenvolvimento de uma rotina computacional de Extração, Transformação e Carga (ETL) utilizando a linguagem Python, a fim de higienizar e reestruturar os dados para uma série temporal contínua e linear (*long-format*), apropriada para o uso em bibliotecas de finanças quantitativas.
+
+Após a concatenação cronológica, o tratamento de valores nulos referentes a feriados e finais de semana, e a validação de consistência do calendário de negociações, o processo de engenharia de dados consolidou um universo amostral estrito de **3.967 pregões válidos** ($N = 3.967$).
+
+A partir da série de preços de fechamento ($P_t$), foram derivadas duas métricas fundamentais de rentabilidade, cada qual com um propósito econométrico específico na modelagem do estudo:
+
+1. **Retornos Simples (Discretos):** Calculados pela equação $R_t = \frac{P_t}{P_{t-1}} - 1$. Esta métrica foi adotada para a modelagem de otimização de pesos, visto que o retorno de uma carteira de investimentos corresponde à média ponderada estrita dos retornos simples individuais de seus ativos subjacentes (cross-sectional aggregation).
+2. **Retornos Logarítmicos (Contínuos):** Calculados através da formulação $r_t = \ln\left(\frac{P_t}{P_{t-1}}\right)$. Esta medida foi implementada para as etapas de análise estatística de risco, agrupamento de volatilidade e projeções, devido às suas propriedades matemáticas de aditividade temporal e simetria analítica em cenários de variações extremas.
+
+O diagnóstico final da série temporal atestou a ausência de duplicatas sistêmicas, a perfeita ordenação monotônica crescente e a aderência das variações extremas (altas e quedas diárias) a eventos de choque macroeconômico publicamente conhecidos, garantindo a robustez dos dados inseridos no modelo computacional.
+
+
+
+===========================================================================================================================================================
+04_Alinhamento_Winsorizacao_Robusta_Final.ipynb
+
+2. ARTEFATO 1: Relato Metodológico DissertativoO Saneamento Estatístico no Domínio dos Retornos e a Evolução do Desvio Absoluto Mediano (MAD)A preparação de painéis longitudinais de ativos financeiros para algoritmos de otimização exige um tratamento rigoroso de anomalias que preserve a dinâmica empírica do mercado sem comprometer a estabilidade numérica dos modelos. Neste trabalho, optou-se por conduzir o saneamento de outliers estritamente no domínio dos retornos, refutando a exclusão arbitrária de ativos com base em limites nominais de preço. Essa decisão metodológica é fundamental para mitigar o viés de sobrevivência, garantindo que companhias em distress financeiro real permaneçam na amostra investável.Para tratar as caudas pesadas (distribuições leptocúrticas) características de séries financeiras emergentes, implementou-se uma winsorização robusta baseada no Z-score modificado de Iglewicz e Hoaglin (1993). O limiar crítico foi estabelecido em $|M_i| > 3{,}5$. Contudo, a aplicação cega desse filtro a um painel de ações brasileiras apresenta um risco inerente de sobre-winsorização em ativos menos líquidos. Séries com baixa frequência de negociação exibem uma elevada massa de probabilidade concentrada em zero (decorrente do carrego de preços ou repetição de cotações de fechamento). Se o cálculo estatístico englobar toda a série, a mediana e o Desvio Absoluto Mediano (MAD) tenderão a zero, estreitando artificialmente os limites teóricos de truncamento. O resultado seria a supressão indevida da variância genuína do ativo nos raros dias em que ele apresenta negociação efetiva.Para solucionar essa distorção, o protocolo foi evoluído para que a estimativa da escala robusta atue exclusivamente de forma condicional, ou seja, avaliando apenas o subconjunto de retornos onde $R_{i,t} \neq 0$. Ao isolar a liquidez nula, as cercas de winsorização passam a refletir a volatilidade latente autêntica do papel. Essa calibração reduziu as intervenções desnecessárias na matriz (como evidenciado pela queda de 11.737 para 9.207 observações truncadas), blindando o ruído estatístico sem penalizar as flutuações reais de mercado.No que tange aos choques extremos de preço temporalmente localizados (frequentemente superiores a 100% ao dia), o pipeline adotou uma arquitetura de inspeção de eventos corporativos. O algoritmo isola assimetrias agudas que se dividem em duas naturezas macro: eventos de reestruturação de capital não ajustados nos bancos de dados (como grupamentos de penny stocks, e.g., GOLL54) e colapsos patrimoniais abruptos (e.g., AMER3). A manutenção desses papéis no painel, combinada ao limite imposto pela winsorização condicional, atua como um mecanismo de defesa bidirecional. O impacto de divisores fracionários defasados é mecanicamente contido no limite do MAD, ao passo que as perdas de cauda derivadas de distress permanecem modeladas.A excelência dessa higienização reflete-se diretamente na viabilidade computacional das etapas subsequentes. Na Teoria Moderna do Portfólio (MPT) de Markowitz, o vetor de pesos ótimos depende sensivelmente da inversão da matriz de covariância. Vetores de retorno contaminados por distorções espúrias geram matrizes mal condicionadas, resultando em alocações de canto (pesos extremos e instáveis). Da mesma forma, na Teoria Pós-Moderna (PMPT), o foco na semivariância penaliza assimetrias esquerdas irracionais. A winsorização robusta garante que os momentos centrais da distribuição se estabilizem, fornecendo uma base matricial numericamente segura para que os otimizadores quadráticos convirjam em direção à fronteira eficiente verdadeira, livre de drivers corporativos artificiais.
+
+===========================================================================================================================================================
+
+05_Estimacao_Parametros_LedoitWolf_Final.ipynb
+
+# Relato Metodológico — Estimação de Parâmetros Estruturais e Regularização de Covariância
+
+A viabilização operacional do modelo de otimização de média-variância de Markowitz requer a estimação de dois insumos fundamentais: o vetor de retornos esperados e a matriz de covariância dos ativos investáveis. Este relato descreve as premissas matemáticas, as justificativas para a seleção do tipo de retorno e o arcabouço de regularização assintótica empregado para mitigar o erro de estimação em alta dimensionalidade.
+
+## 1. Premissa Transversal e Aditividade dos Retornos
+
+No âmbito da *Modern Portfolio Theory* (MPT), a modelagem assume um horizonte de período único no qual o retorno de uma carteira ($R_{p}$) é expresso como a combinação linear convexa dos retornos de seus ativos constituintes ponderados por seus respectivos pesos alocativos ($w_i$). Algebricamente:
+
+$$R_{p} = \mathbf{w}^T \mathbf{R} = \sum_{i=1}^{N} w_i R_{i}$$
+
+Esta identidade aditiva é estritamente válida apenas para **retornos simples**. Caso fossem utilizados log-retornos (retornos contínuos), a propriedade de linearidade cross-sectional seria violada, uma vez que o logaritmo da soma não equivale à soma dos logaritmos ($\ln \sum w_i R_i \neq \sum w_i \ln R_i$). Por conseguinte, tanto o vetor de expectativas matemáticas $\boldsymbol{\mu}$ quanto a matriz de covariância $\boldsymbol{\Sigma}$ foram computados sobre os retornos simples diários saneados. 
+
+Para fins de padronização institucional e comparabilidade, as métricas diárias foram anualizadas assumindo um ano estrutural de 252 pregões úteis, por meio das transformações:
+
+$$\boldsymbol{\mu}_{a} = \boldsymbol{\mu}_{d} \cdot 252$$
+$$\boldsymbol{\Sigma}_{a} = \boldsymbol{\Sigma}_{d} \cdot 252$$
+
+A taxa livre de risco de referência utilizada para o cálculo do prêmio de risco e do vetor de Sharpe foi o CDI diário médio, registrando $0,000369$ ($9,74\%$ a.a.).
+
+## 2. Instabilidade Algébrica e Dimensionalidade Amostral
+
+A matriz de covariância amostral ($\mathbf{S}$), calculada por máxima verossimilhança com graus de liberdade ajustados, é dada por:
+
+$$\mathbf{S} = \frac{1}{T-1} \sum_{t=1}^{T} (\mathbf{R}_t - \boldsymbol{\mu})(\mathbf{R}_t - \boldsymbol{\mu})^T$$
+
+Quando avaliada sobre a amostra completa, compreendendo $T = 3.966$ pregões e $N = 118$ ativos elegíveis, a razão de dimensionalidade se estabiliza em $T/N \approx 33,6$. Sob este cenário de abundância de dados, $\mathbf{S}$ apresenta-se bem-condicionada, exibindo um número de condição de autocorrelação $\kappa \approx 1.237$ e menor autovalor estritamente positivo ($3,67 \times 10^{-3}$), o que confere estabilidade numérica à inversão linear.
+
+Contudo, os algoritmos de otimização operam de forma dinâmica por meio de janelas móveis de rebalanceamento técnico. Ao reduzir a janela amostral para horizontes de curto prazo, a razão $T/N$ sofre severa degradação:
+1. Em janelas de 252 pregões (rebalanceamento anual), $T/N \approx 2,14$, o que eleva o número de condição amostral para $\kappa = 5.898$.
+2. Em janelas de 126 pregões (rebalanceamento semestral), $T/N \approx 1,07$, expandindo o erro amostral ($\kappa = 92.444$).
+3. Em janelas de 63 pregões (rebalanceamento trimestral), $T/N = 0,53 < 1$. Nesta faixa, o número de observações é inferior ao número de parâmetros a estimar, tornando $\mathbf{S}$ uma matriz singular, deficiente em posto, com autovalores nulos ou numericamente negativos devido ao ruído de máquina ($\approx -4,51 \times 10^{-16}$).
+
+A singularidade de $\mathbf{S}$ impede sua inversão ($\mathbf{S}^{-1}$), impossibilitando o cálculo analítico dos pesos da Carteira de Variância Mínima Global (VGM) e da Fronteira Eficiente, cujas equações exigem o produto do inverso da matriz pelo vetor de unidades ou de retornos.
+
+## 3. Regularização de Matriz por Encolhimento Assintótico (Ledoit-Wolf)
+
+Para contornar o colapso numérico gerado pelo mau condicionamento e neutralizar o "erro de maximização" (viés do otimizador em hiperalocar ativos com riscos subestimados por ruído amostral), implementou-se o estimador de encolhimento (*shrinkage*) linear de Ledoit e Wolf (2004).
+
+O estimador computa uma matriz regularizada $\boldsymbol{\Sigma}^{*}$ por meio de uma combinação linear convexa entre a matriz de covariância amostral desenviesada $\mathbf{S}$ e um alvo estruturado de baixa variância $\mathbf{F}$:
+
+$$\boldsymbol{\Sigma}^{*} = \delta \mathbf{F} + (1 - \delta) \mathbf{S}$$
+
+O alvo de encolhimento selecionado foi a matriz identidade escalada pela variância média dos ativos, preservando os elementos da diagonal e zerando as covariâncias fora da diagonal (*constant correlation target* com correlação nula):
+
+$$\mathbf{F} = \bar{\mu} \mathbf{I} \quad \text{onde} \quad \bar{\mu} = \frac{\text{tr}(\mathbf{S})}{N}$$
+
+A intensidade de encolhimento $\delta \in [0,1]$ determina o peso regulatório. Em vez de uma calibração arbitrária por validação cruzada, Ledoit e Wolf (2004) deduzem analiticamente o parâmetro $\delta$ ótimo sob a métrica de perda baseada na norma quadrática de Frobenius, minimizando o erro quadrático médio esperado entre a matriz estimada e a matriz populacional assintótica. 
+
+O algoritmo calcula a variância dos elementos amostrais ($b^2$) e a distância quadrática ao alvo ($d^2$), definindo a intensidade como:
+
+$$\delta = \max \left(0, \min \left( \frac{\beta^2}{d^2}, 1 \right) \right)$$
+
+O efeito prático desta formulação é dinâmico: quanto menor a janela amostral disponível (menor $T/N$), maior o nível de ruído em $\mathbf{S}$, forçando o estimador a aumentar o valor de $\delta$ (mais encolhimento em direção ao alvo estável $\mathbf{F}$). Esse mecanismo corrige os autovalores extremos, restabelece o condicionamento numérico e garante que $\boldsymbol{\Sigma}^{*}$ seja estritamente positiva definida e perfeitamente invertível em qualquer cenário de rebalanceamento.
+
+
+===========================================================================================================================================================
+06_Otimizacao_Carteiras_Backtest_Final.ipynb
+
+
+Relato Metodológico: Otimização de Carteiras e Simulação de Backtest Regulatório 
+O modelo computacional consolidado no artefato 06_Otimizacao_Carteiras_Backtest_Final.ipynb estabelece a infraestrutura analítica para a simulação algorítmica de portfólios no mercado acionário brasileiro. O objetivo primário desta etapa foi construir a série histórica de retornos (out-of-sample) de diferentes estratégias de alocação, isolando o impacto de restrições regulatórias e corrigindo inconsistências matemáticas na estimação paramétrica.Em termos de evolução metodológica, o script implementa uma retificação crítica na função-objetivo da carteira de Máximo Índice de Sharpe. Evitando a degeneração do modelo em soluções de canto resultantes de uma otimização estritamente linear de retornos, o denominador da função de maximização foi ajustado para refletir a volatilidade dinâmica da carteira, dada por $\sqrt{w'\Sigma w}$. Esta correção restaura a concavidade estrutural do problema matricial, garantindo a localização fidedigna do Portfólio de Tangência. Adicionalmente, a estimação da matriz de covariância ($\Sigma$) adotou o método de encolhimento (shrinkage) de Ledoit-Wolf, assegurando que a matriz seja definida positiva e invertível mesmo diante de alta dimensionalidade de ativos.Para garantir a aderência institucional da simulação à realidade de um fundo de investimento no Brasil, impôs-se um teto de concentração máxima aos otimizadores. As estratégias de Mínima Variância e Máximo Sharpe foram executadas em duas frentes: (i) um cenário irrestrito e (ii) um cenário restrito a $10\%$ de peso por ativo, espelhando os limites de concentração por companhia emissora impostos pela Resolução CVM nº 175/2022. O processo de simulação de backtest preservou a cronologia da informação, executando rebalanceamentos mensais baseados em janelas móveis de estimação de 252 pregões, permitindo a deriva de pesos (drift) inter-períodos e apropriando custos de transação de 20 pontos-base incidentes estritamente sobre o volume financeiro transacionado (turnover).
+
+
+
+===========================================================================================================================================================
+
+# Relato Metodológico: Inferência Estatística e Caracterização do Benchmark
+
+A validação da robustez empírica das estratégias de otimização demandou a implementação de um pipeline de inferência estatística rigoroso, instrumentalizado no arquivo `07_Inferencia_Econometrica_Desempenho_Final.ipynb`. Para mitigar o viés de superestimação e garantir a fidedignidade do prêmio de risco, rejeitou-se o uso de uma taxa livre de risco constante, operacionalizando a série diária do Certificado de Depósito Interbancário (CDI) flutuante como métrica exata de custo de oportunidade no cômputo dos retornos em excesso.
+
+O desenho analítico operou em duas frentes metodológicas:
+1. **Caracterização do Mercado e Volatilidade Condicional:** O IBOVESPA foi submetido a uma bateria de testes de diagnóstico (ADF, KPSS, Ljung-Box e Jarque-Bera), ratificando a não-normalidade e a heterocedasticidade das séries. Para parametrizar o risco sistêmico, foi modelada a variância condicional dinâmica mediante a avaliação dos algoritmos GARCH(1,1), GJR-GARCH(1,1,1) e EGARCH(1,1,1). O critério BIC determinou a superioridade do modelo EGARCH com inovações t de Student, capaz de acomodar assimetrias (efeito alavancagem) e caudas pesadas, permitindo assim o cálculo fidedigno do parâmetro de aversão ao risco ($\delta$) implícito no mercado.
+2. **Avaliação Relativa e Absoluta de Desempenho:** A superioridade ajustada ao risco e a geração de alfa pelas estratégias out-of-sample foram escrutinadas sob correção de falhas dos resíduos. Empregaram-se Regressões CAPM com matrizes de covariância HAC (Newey-West, 1987) para os alfas de Jensen; o teste estatístico de Jobson e Korkie (1981) corrigido por Memmel (2003) para igualdade assintótica de Índices de Sharpe em amostras correlacionadas; e o Teste de Expansão da Fronteira Eficiente (*Spanning Test*) de Huberman e Kandel (1987) via restrição paramétrica conjunta de Wald. 
+
+Para refinar a aferição do risco assimétrico (Índice de Sortino) e consolidar os intervalos de confiança a 95%, foi introduzida uma rotina de *Stationary Bootstrap* (Politis & Romano, 1994) com 1.000 iterações em blocos mensais, preservando a memória longitudinal da estrutura de retornos.
+
+===========================================================================================================================================================
