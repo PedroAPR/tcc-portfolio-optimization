@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Ambiente virtual
+venv/
+.venv/
+env/
+.env/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.lcov
+
+# Distribuição
+dist/
+build/
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dados grandes / binários brutos
+*.rar
+data/dados_economatica/
+data/dados_economatica_consolidados/
+data/dados_economatica_tratados/
+
+# Cache interno do pipeline
+src/.pipeline_cache.json
+
+# Scripts de scratch temporários (preserva a pasta, ignora conteúdo)
+scratch/*.py
+scratch/*.txt
+src/scratch/
