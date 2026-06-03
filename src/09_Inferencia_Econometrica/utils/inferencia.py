@@ -142,9 +142,10 @@ def lw_bootstrap_sharpe(ri, rj, bloco=10, reps=2000, seed=42):
     def _sr(x): s = x.std(ddof=1); return float(x.mean() / s) if s > 0 else 0.0
     diff_obs = _sr(ri) - _sr(rj)
     rng = np.random.default_rng(seed); n = len(ri)
-    diffs = np.array([_sr(ri[stationary_bootstrap_idx(n, bloco, rng)])
-                      - _sr(rj[stationary_bootstrap_idx(n, bloco, rng)])
-                      for _ in range(reps)])
+    diffs = np.empty(reps)
+    for b in range(reps):
+        idx = stationary_bootstrap_idx(n, bloco, rng)   # mesmo índice para ambas as séries
+        diffs[b] = _sr(ri[idx]) - _sr(rj[idx])
     se = diffs.std(ddof=1)
     z  = diff_obs / se if se > 0 else 0.0
     return float(diff_obs * np.sqrt(TRADING_DAYS)), float(2 * (1 - stats.norm.cdf(abs(z))))
@@ -160,9 +161,10 @@ def lw_bootstrap_sortino(ri, rj, rf=0.0, bloco=10, reps=2000, seed=42):
         return float(exc.mean() / dn) if dn > 0 else 0.0
     diff_obs = _so(ri) - _so(rj)
     rng = np.random.default_rng(seed); n = len(ri)
-    diffs = np.array([_so(ri[stationary_bootstrap_idx(n, bloco, rng)])
-                      - _so(rj[stationary_bootstrap_idx(n, bloco, rng)])
-                      for _ in range(reps)])
+    diffs = np.empty(reps)
+    for b in range(reps):
+        idx = stationary_bootstrap_idx(n, bloco, rng)   # mesmo índice para ambas as séries
+        diffs[b] = _so(ri[idx]) - _so(rj[idx])
     se = diffs.std(ddof=1)
     z  = diff_obs / se if se > 0 else 0.0
     return float(diff_obs * np.sqrt(TRADING_DAYS)), float(2 * (1 - stats.norm.cdf(abs(z))))
