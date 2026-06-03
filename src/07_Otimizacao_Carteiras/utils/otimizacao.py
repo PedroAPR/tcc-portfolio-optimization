@@ -113,9 +113,21 @@ def w_equal(n):
 
 
 def w_inv_vol(S):
-    """Retorna pesos ponderados pelo inverso da volatilidade individual."""
-    iv = 1.0 / np.sqrt(np.diag(S))
-    return iv / iv.sum()
+    """Retorna pesos ponderados pelo inverso da volatilidade individual.
+
+    [FIX G1a] Proteção contra ativo com variância zero: atribui peso zero a esses
+    ativos e redistribui entre os demais. Se todos os ativos têm var=0 (caso
+    degengerado), cai de volta em pesos iguais.
+    """
+    diag = np.diag(S)
+    # np.where avalia ambos os ramos antes de mascarar; errstate suprime o
+    # RuntimeWarning benigno de 1/sqrt(0) que nunca chega ao resultado final.
+    with np.errstate(divide='ignore', invalid='ignore'):
+        iv = np.where(diag > 0, 1.0 / np.sqrt(diag), 0.0)
+    total = iv.sum()
+    if total == 0:
+        return np.repeat(1.0 / len(diag), len(diag))  # fallback: pesos iguais
+    return iv / total
 
 
 def w_min_var(S, teto=None, long_only=True, w0=None):
@@ -312,7 +324,12 @@ def w_min_cdar(cenarios, alpha=0.95, teto=None, long_only=True):
     if not CVXPY_OK:
         raise RuntimeError("cvxpy indisponível para CDaR")
     R = np.asarray(cenarios, float); T, k = R.shape
-    Rcum = np.cumsum(R, axis=0)
+    # [FIX G7] Processo de riqueza multiplicativo (cumprod) em vez de aditivo (cumsum).
+    # O drawdown é definido como queda percentual do pico da riqueza acumulada.
+    # cumsum aproxima log(riqueza) apenas para retornos próximos de zero; para
+    # janelas longas (T~1260) o erro é material. cumprod(1+R) é o processo correto,
+    # consistente com max_drawdown() em inferencia.py (que usa cumprod).
+    Rcum = np.cumprod(1 + R, axis=0)
     w = cp.Variable(k); u = cp.Variable(T); z = cp.Variable(T, nonneg=True); zeta = cp.Variable()
     C = Rcum @ w
     hi = teto if teto is not None else 1.0
@@ -418,10 +435,16 @@ def otimizar_mes_task(args):
     # --- Black-Litterman: prior clássico (Σ_LW) e prior downside (Σ_D) ---
     try:
         SigD = estrada_semicov(Jv, MAR_ESTRADA) * TRADING_DAYS
+        # [FIX D1] Sigma clássico deve estar em escala ANUAL antes de entrar em
+        # visoes_momentum (que produz Q anual) e em bl_posterior.
+        # Anteriormente, S diário era passado → Omega ficava 252× menor que Q,
+        # fazendo o posterior colapsar artificialmente para as visões de momentum.
+        # Agora S_anual garante que Π, Q e Ω estão na mesma base temporal.
+        S_anual = S * TRADING_DAYS
         wm   = np.repeat(1.0 / N, N)
-        P, Q, Om = visoes_momentum(Jv, TAU, S, TRADING_DAYS, VISAO_MOMENTUM_MESES)
-        for nome, Sg, Pi in [("classico", S,    DELTA * S    @ wm),
-                              ("downside", SigD, DELTA * SigD @ wm)]:
+        P, Q, Om = visoes_momentum(Jv, TAU, S_anual, TRADING_DAYS, VISAO_MOMENTUM_MESES)
+        for nome, Sg, Pi in [("classico", S_anual, DELTA * S_anual @ wm),
+                              ("downside", SigD,    DELTA * SigD    @ wm)]:
             mu_bl = bl_posterior(Sg, Pi, P, Q, Om, TAU)
             alvos[f"BL_{nome}"]     = w_max_sharpe(mu_bl, Sg, rf_a, None,
                                                     w0=_w0.get(f"BL_{nome}"))

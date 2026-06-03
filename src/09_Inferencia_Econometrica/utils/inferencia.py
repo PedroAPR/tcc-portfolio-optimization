@@ -80,9 +80,17 @@ def _wald_spanning(y, X_const, maxlags=5):
     return res, float(np.asarray(w.statistic).flatten()[0]), float(np.asarray(w.pvalue).flatten()[0])
 
 def _jk_memmel(exc_a, exc_b):
-    """Jobson-Korkie com correção de Memmel (2003) para comparação de Sharpe."""
-    SRa = exc_a.mean() / exc_a.std(ddof=1)
-    SRb = exc_b.mean() / exc_b.std(ddof=1)
+    """Jobson-Korkie com correção de Memmel (2003) para comparação de Sharpe.
+
+    [FIX G1b] Proteção contra std==0 (série de excesso constante): retorna
+    z=0, p=1.0 (não rejeita H0), evitando NaN/inf que mascaravam resultados.
+    """
+    std_a = exc_a.std(ddof=1)
+    std_b = exc_b.std(ddof=1)
+    if std_a == 0 or std_b == 0:
+        return 0.0, 1.0
+    SRa = exc_a.mean() / std_a
+    SRb = exc_b.mean() / std_b
     rho = exc_a.corr(exc_b)
     T = len(exc_a)
     theta = (1.0 / T) * (2 - 2 * rho + 0.5 * (SRa ** 2 + SRb ** 2 - 2 * SRa * SRb * (rho ** 2)))
