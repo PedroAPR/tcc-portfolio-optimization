@@ -190,7 +190,8 @@ def run_notebook(nb_path: Path) -> bool:
             cwd=str(nb_path.parent),
             capture_output=True,
             text=True,
-            encoding='utf-8'
+            encoding='utf-8',
+            errors='replace'
         )
         if result.returncode != 0:
             print(f"\n[-] Erro ao executar o notebook {nb_path.name}:")
