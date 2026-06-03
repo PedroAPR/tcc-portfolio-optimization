@@ -87,7 +87,7 @@ def _jk_memmel(exc_a, exc_b):
     """
     std_a = exc_a.std(ddof=1)
     std_b = exc_b.std(ddof=1)
-    if std_a == 0 or std_b == 0:
+    if std_a <= 1e-14 or std_b <= 1e-14:
         return 0.0, 1.0
     SRa = exc_a.mean() / std_a
     SRb = exc_b.mean() / std_b
