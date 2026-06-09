@@ -1,0 +1,737 @@
+relatorio_auditoria_codigo.md
+
+2 defeitos CRÍTICOS
+
+1. `FICT3` no universo de produção — ticker sentinela/dummy da Economatica presente entre os 118 ativos finais (75,7% de presença, 965 dias com retorno zero). Contamina a matriz de covariância 118×118 e os pesos de todas as 16 estratégias.
+2. MinCDaR degenerado — CAGR = −1,75%, MaxDD = −81,81% em 10 anos de OOS. Causa provável: LP convexo com janela expansiva longa (T até ~3.000 obs) aceita status `optimal_inaccurate` sem verificação da qualidade dos pesos retornados.
+3 defeitos ALTOS
+
+1. `GOLL54` inválido — ticker sem sufixo "54" na B3; o correto é `GOLL4`.
+2. `tensorflow`, `keras`, `hmmlearn` em `requirements.txt` sem nenhum uso nos notebooks de produção (LSTM/HMM foram especificados mas nunca implementados).
+3. Versões não fixadas (`>=`) — ambiente não reprodutível bit-a-bit.
+5 defeitos MÉDIOS
+
+* Prior BL 1/N em vez de cap-ponderado; δ = 2,5 fixo; três implementações paralelas de `ledoit_wolf()`; `--inplace` no nbconvert; turnover BL > 800%/a.a. com custo subestimado.
+O que está correto
+
+* Fórmula de look-ahead está limpa (janela sempre `:fim_prev` = mês anterior)
+* Anualização Σ×252 e σ×√252 consistente em todos os módulos
+* Escala temporal do BL corrigida (FIX D1 aplicado)
+* Sortino, CAGR, MaxDD e bootstrap implementados corretamente
+* 130 rebalanceamentos completos para todas as demais estratégias
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Vou ler a parte do relatório que ficou truncada para entender os detalhes técnicos antes de responder.Analisou contradições no relatório e formulou estratégia de triagemAnalisou contradições no relatório e formulou estratégia de triagemLi o relatório completo. Antes de responder, deixa eu verificar uma das afirmações do auditor sobre o ticker GOLL54, porque a convenção de sufixos da B3 tem alguns casos que valem conferir.Dissecou auditoria técnica e reformulou diagnósticos com nuances substantivasDissecou auditoria técnica e reformulou diagnósticos com nuances substantivasLi o relatório inteiro. A estrutura da auditoria é boa e a maioria dos diagnósticos procede, mas tem três coisas que eu reprioritizaria — e uma delas o auditor errou. Vou ser direto sobre o que vale e o que não vale.
+Os dois CRÍTICOS provavelmente são o mesmo bug
+O ponto mais importante que o próprio relatório quase enxerga mas não conecta: D1 e D2 têm a mesma raiz, e a evidência está no pseudocódigo do filtro (linha 185):
+presenca = (painel[fechamento] > 0).mean(axis=0)
+O filtro mede preço > 0, não preço variou nem dado não-imputado. Um ativo com preço constante (sentinela, ou filiado a ffill de ilíquido) tem fechamento > 0 todos os dias → presença = 100% → passa folgado no corte de 95%, mesmo tendo retorno zero em quase toda a série. Isso explica a contradição interna do próprio relatório, que afirma que FICT3 passou no filtro de ≥95% e tem só 75,7% de presença com 965 dias de retorno zero — as duas coisas só são compatíveis se o que passou no filtro foi o preço imputado/constante, não o dado real.
+E aqui está a conexão com D2: um ativo de variância ~zero é exatamente o que um minimizador de risco adora. MinVar, MinCVaR e principalmente MinCDaR vão despejar peso enorme num "ativo quase sem risco" que na verdade é lixo sintético. Minha aposta forte e testável: o MinCDaR não está degenerado por instabilidade do LP — está concentrando em FICT3 (e talvez em outro ativo de preço travado), e a curva afunda quando esse ativo finalmente se move ou quando o resto da carteira fica subexposto. Corrigir D1 deve corrigir boa parte de D2 sozinho. A guarda pós-solver que o auditor sugere é boa higiene, mas trataria o sintoma, não a causa.
+Antes de aceitar a tese "instabilidade numérica do LP", eu olharia pesos_historico.csv e veria quanto peso o MinCDaR (e o MinVar) colocam em FICT3 ao longo dos 130 meses. Se for alto, o caso está fechado.
+D3 está errado — GOLL54 é um ticker válido
+O auditor afirmou que GOLL54 não existe na B3 e que o correto seria GOLL4. Isso está incorreto. As ações ordinárias da Gol, que eram GOLL3, passaram a operar como GOLL53, e as preferenciais mudaram de GOLL4 para GOLL54 — mudança que entrou em vigor em junho de 2025, refletindo a reestruturação da companhia após o Chapter 11. Não renomeie para GOLL4 seguindo a recomendação do relatório; isso seria reintroduzir um erro. EuQueroInvestirInfoMoney
+Mas há um risco real que o auditor não viu, e é mais sério do que ele imaginava: GOLL54 carrega o artefato da diluição de 2025. Na estreia do código as ações dispararam 1.874%, chegando a R$ 200,01, e a cotação exibida precisa ser dividida por 1.000 porque o papel passou a negociar em lotes de mil ações. Hoje é praticamente uma penny stock travada em R$ 0,01 com rentabilidade de 0,00% no último mês, ano, cinco anos e década. Ou seja: se a Economática emendou a série histórica de GOLL4 sob o rótulo GOLL54, sua janela OOS de 2025 pode conter (a) um salto espúrio de conversão de ticker e (b) longos trechos de retorno zero — exatamente o mesmo modo de falha de variância-zero do FICT3. Vale checar o que acontece com essa coluna em meados de 2025. InfoMoney + 2
+Os ALTOS e MÉDIOS — concordo, mas são quase todos baixo esforço
+tensorflow/keras/hmmlearn no requirements.txt (D4), versões não pinadas (D5), --inplace no nbconvert (D9), três cópias de ledoit_wolf() (D8): são limpeza, resolvem em minutos e não tocam em nenhum número. Faça por último.
+D6/D7 (δ=2,5 fixo, prior 1/N em vez de cap-ponderado) e D10 (turnover BL >800% com custo subestimado) são escolhas metodológicas, não bugs — e o auditor classificou corretamente. Para o TCC, o importante não é "consertar": é declarar como limitação num parágrafo. Trocar o prior por cap-ponderado a esta altura abriria uma frente nova de validação que você não precisa.
+Uma ressalva honesta sobre a conclusão da auditoria
+O relatório diz que os críticos "invalidam resultados". Isso só é verdade na medida em que FICT3/GOLL54 carreguem peso material nas estratégias campeãs. Pela memória do seu trabalho, suas vencedoras são MinVar L1 e MaxSharpe L1 — e a tese central (relação inversa complexidade↔desempenho OOS) não depende do MinCDaR nem é provável que dependa de um único ativo. Então: os críticos contaminam a higiene do universo e provavelmente explodem o MinCDaR, mas a chance de derrubarem sua narrativa principal é baixa. Você vai querer reportar isso com calma, não em pânico.
+
+Ordem que eu sugiro:
+
+Diagnóstico (não corrige nada ainda): inspecionar FICT3 e GOLL54 na matriz de preços — presença real, dias de retorno zero, e peso atribuído pelo MinVar/MinCDaR ao longo dos 130 meses.
+Confirmado o lixo → remover do universo em NB03, re-rodar NB05→NB09.
+Adicionar a guarda pós-solver no MinCDaR de qualquer forma (robustez).
+Limpeza de requirements.txt e --inplace.
+Parágrafo de limitações cobrindo δ, prior, turnover/custo.
+
+Eu não tenho seus arquivos de dados aqui (só o .md), então o passo 1 precisa rodar na sua máquina. Posso te entregar um notebook de diagnóstico para isso. Executar agora ou gerar como notebook Jupyter (.ipynb)? — e por qual dos pontos você quer começar?
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+FICT3 não é sentinela e GOLL54 não é ticker inválido. São empresas reais: FICT3 é a Fictor Alimentos (ex-ATOM3), micro-cap em recuperação na casa de R$ 0,63; GOLL54 é a GOL PN de verdade, o código que substituiu GOLL4 após o Chapter 11 em junho/2025. A auditoria carimbou os dois como "defeito de dados a deletar", e errou nos dois — e eu repeti o erro. Eles não são lixo a remover: são penny stocks reais. É por isso que sua pergunta de sábado volta agora, só que mais afiada.
+O que vocês estão olhando e não estão vendo
+A propriedade "penny stock" é dinâmica, não estática — e os ativos que te incomodam são invisíveis justamente para o único filtro que é seguro.
+Veja o que cada filtro estático faz com a GOLL4:
+
+Filtro por preço final/atual < R$ 1 → remove GOLL54, FICT3, AMER3, OIBR3. Mas você os remove porque caíram. É o viés de sobrevivência entrando pela porta dos fundos — exatamente o que te alertei.
+Filtro por preço inicial (2010) < R$ 1 → é a versão segura, ex ante… e não pega nenhum deles. GOLL4 valia mais de R$ 20 em 2010; AMER3 e OIBR3 eram large caps. O filtro seguro é cego para os ativos que estão contaminando seus dados.
+
+Esse é o nó que ninguém está enxergando: a versão segura do filtro é inútil, e a versão útil é insegura. Vocês vêm tratando "penny stock" como um carimbo de universo (entra ou não em NB03), quando na verdade é um estado que o ativo atravessa no meio da amostra. A mesma coluna da matriz é uma ação saudável de 2010 a 2018 e um penny degenerado de 2019 a 2025. A contaminação não nasce na seleção do universo — nasce mês a mês, dentro do backtest, quando os retornos podres (o salto de grupamento de ~1.847%, o R$ 0,01 travado, a variância colapsando pra perto de zero) entram na Σ e no μ a cada rebalanceamento. NB03 não tem como barrar isso, porque em 2010 esses papéis passaram no funil de liquidez por mérito — e foi de propósito, pela sua própria regra anti-sobrevivência de calcular ADTV só na janela de formação.
+A saída: filtro point-in-time, não mais um filtro estático
+A propriedade que você quer barrar — "este ativo, hoje, é um penny stock que vai poluir minha covariância" — é observável em tempo real, sem olhar o futuro. Então o artefato certo vive dentro do loop de rebalanceamento do NB07, não em NB03. A cada data t, usando só dados até t, você mascara do conjunto investável qualquer ativo cuja mediana de preço móvel (ex.: 21 pregões) esteja abaixo do piso — opcionalmente combinado com ADTV recente abaixo do corte ou variância móvel ≈ 0 — e renormaliza os pesos sobre os sobreviventes daquele mês.
+Por que isso fecha os três flancos de uma vez:
+
+Sem sobrevivência — a decisão em t só usa o passado de t. GOLL4 participa enquanto está líquida e sai quando vira penny; você não a tirou por saber que ia cair.
+Sem look-ahead — nada do futuro entra na máscara.
+Defensável na banca — é como um fundo opera de verdade: não dá pra alocar capacidade num lote de mil ações a R$ 0,01. Vira "tela de investabilidade point-in-time", não cherry picking.
+
+E o ganho fino: esse mesmo mecanismo provavelmente conserta o MinCDaR sem gambiarra. Um ativo de variância ≈ 0 (GOLL54 travada) é irresistível pra um minimizador de risco — removê-lo no período em que está degenerado trata a causa, não o sintoma com guarda pós-solver.
+A ressalva honesta
+Isso mexe na sua narrativa de universo fixo. Hoje o N=118 é estático; migrar pra máscara point-in-time faz o número de ativos investáveis variar por mês. Não é problema — é mais realista e mais forte —, mas o Capítulo 3 passa a descrever "universo investável dinâmico por tela point-in-time" em vez de "118 ativos fixos". É frente de escrita, não só de código. Se o deadline apertar, existe a versão mínima: manter o universo fixo e aplicar a máscara só como veto de peso (o ativo continua na Σ para estimação, mas recebe peso zero quando degenerado) — menos elegante, bem menos reescrita.
+Antes de eu montar qualquer coisa: você quer a versão completa (máscara dinâmica redefinindo o investável a cada mês) ou a mínima (universo fixo + veto de peso)? E o gatilho da máscara você prefere ancorar em preço (piso de R$ 1 sobre a mediana móvel) ou em liquidez/ADTV, que é o critério economicamente mais limpo e foge da arbitrariedade do número nominal?
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Lembro, sim. Foi quando você perguntou se dava pra puxar a capitalização histórica dos arquivos da CVM, e a conclusão a que chegamos foi que o que você precisa não é "market cap pronto" — é a quantidade de ações em circulação ponto a ponto, que mora nos dados estruturados de DFP/ITR (os CSV anuais da CVM) e nos Formulários de Referência, cobrindo seu período desde ~2010. Multiplicando pelo preço que você já tem, sai a capitalização em cada data. E, num fio paralelo, ficou pendente o ajuste dos grupamentos (GOLL54, AMER3, TELB4) na origem — que eu disse depender das datas e fatores vindos dos comunicados B3/CVM.
+Juntar os dois threads é um bom instinto, e melhor do que talvez você esteja vendo: esse mesmo dado faz trabalho duplo.
+Payoff 1 — o prior cap-ponderado do BL (alto valor). Com ações em circulação × preço em cada data de rebalanceamento, você troca o prior 1/N pela carteira de mercado canônica do CAPM reverso, point-in-time e sem look-ahead. É exatamente o D7 que a auditoria marcou como "escolha frágil" — e converte sua "limitação declarada" (não tínhamos market cap, usamos 1/N) em "implementação canônica". Provavelmente é a melhoria metodológica de maior retorno ainda disponível pra você.
+Payoff 2 — ajuste de grupamento na origem (valor contido). Com data + fator de cada evento, você ajusta o preço a montante em vez de só winsorizar o salto. O +1.847% da GOLL54 e o inplit 100:1 da AMER3 deixam de ser "evento mascarado pela winsorização" e viram "evento tratado corretamente" — resposta limpa pra cobrança da banca sobre o desfecho da verificação dos cinco tickers.
+Uma ressalva pra não embaralharmos os fios: isso é complementar à máscara point-in-time de ontem, não substituto. O ajuste de grupamento tira o artefato (o salto espúrio). Ele não tira o estado real de penny stock — a GOLL54 travada em R$ 0,01 com variância ≈ 0 continua lá depois de ajustada, porque a diluição é real, não erro de dado. Quem barra isso ainda é a tela de investabilidade. Os dois juntos é que limpam a história: ajuste de evento (artefato) + máscara point-in-time (estado).
+Agora, o que decide se vale a pena é o que esse relatório que você achou realmente contém — e isso eu não consigo ver de memória, então não vou chutar. Me mostra ele (ou me descreve as colunas): traz, por ticker, tipo de evento + data + fator (serve pro Payoff 2)? Traz quantidade de ações em circulação ao longo do tempo (serve pro Payoff 1)? Os dois? E cobre seus 118 tickers no intervalo 2010–2025? O valor muda completamente conforme a resposta: uma lista de eventos pontuais é uma coisa; uma série temporal de ações em circulação é a peça que faltava pro BL.
+Sendo honesto com o cronograma: o Payoff 2 é contido e cabe bem. O Payoff 1 dá mais trabalho — exige casar classes ON/PN por empresa, alinhar datas ao painel de 118, e conferir se a Economática já não ajustou os desdobramentos (senão você ajusta duas vezes) — mas é o de maior peso acadêmico.
+Sobe o relatório, ou cola as primeiras linhas dele, que eu te digo sem achismo qual dos dois ele habilita e monto o plano. Se preferir, já busco o formato atual dos dados abertos da CVM pra confirmarmos o que esperar do arquivo.Você disse: continuecontinue5 de jun.Claude respondeu: Vou levantar o estado atual dos dados abertos da CVM e da B3 para a gente saber, sem achismo, o que esperar do arquivo e qual dos dois payoffs ele de fato habi…Resolved ambiguity and planned targeted web researchResolved ambiguity and planned targeted web researchVou levantar o estado atual dos dados abertos da CVM e da B3 para a gente saber, sem achismo, o que esperar do arquivo e qual dos dois payoffs ele de fato habilita.Synthesized data sources, reframed diagnostic findings, charted pragmatic path forwardSynthesized data sources, reframed diagnostic findings, charted pragmatic path forwardAchei o que precisávamos, e a notícia é boa: os dois dados existem, são públicos e estruturados. Mas a busca também mudou um pouco o diagnóstico — vale você ver antes de decidirmos.
+Para o Payoff 1 (prior cap-ponderado). A CVM passou a publicar a seção "Dados da Empresa / Composição do Capital" nos conjuntos DFP e ITR de companhias abertas, em CSV, com histórico desde 2010. É daí que sai a quantidade de ações ON/PN por data de balanço. O Formulário de Referência (FRE) também traz a estrutura de capital e a posição acionária em CSV. Granularidade trimestral/anual — você faz ffill entre as datas de balanço para casar com o rebalanceamento mensal. Essa é a peça que faltava para trocar o 1/N pela carteira de mercado canônica. Riconnect + 2
+Para o Payoff 2 (ajuste de grupamento). Existe fonte com exatamente os campos que você precisa: tipo de evento, data-com e fator. Um exemplo concreto do formato: um grupamento da OIBR3 com valorAntes = 10 e valorDepois = 1, data-com 06/01/2023, tipo GRUPAMENTO. Esse é o "data + fator" que eu tinha dito faltar. Cvm
+O reframe importante
+A busca revelou algo que muda o que você de fato precisa consertar: as bases históricas da B3 (e a Economática) já vêm ajustadas por eventos corporativos — dividendos, splits e grupamentos. Ou seja, seus preços provavelmente já estão ajustados — e isso reinterpreta seus dois casos problemáticos: Cvm
+
+AMER3 com nível ~R$ 1.617 não é "preço corrompido" — é o ajuste retroativo do inplit 100:1 aplicado a toda a série histórica. O nível incha, mas os retornos continuam corretos. Para o seu pipeline return-based, AMER3 provavelmente não é problema nenhum. (É coerente com o que a gente já tinha concluído: manter, bem justificado.)
+GOLL54 com o salto de +1.847% é diferente: é quase certamente uma emenda de ticker (GOLL4→GOLL54) em que o fator de ajuste não atravessou a fronteira da troca de código. Aí sim há um retorno espúrio real de um dia — e é exatamente isso que a tabela de eventos (data + fator do grupamento) conserta.
+
+Tradução prática: o Payoff 2 não é "ajustar os 5 tickers" — é costurar a emenda da GOLL54 (e conferir se TELB4 tem o mesmo tipo de splice). Ficou muito mais contido do que parecia.
+E um detalhe que costura com a conversa de penny stock: a B3 usa o grupamento justamente como ferramenta de remediação — estabelece regras de grupamento (inplit) para penny stocks, aumentando o preço unitário. Então um grupamento na série é, em si, um sinal de que o ativo entrou em território de penny stock — o que reforça a máscara point-in-time, sem substituí-la. Cvm
+Sendo honesto com o custo
+Três caminhos, custos bem diferentes:
+
+Re-baixar uma série já ajustada (Data Solution da B3 / provedor) — limpo em tese, mas trocar fonte de dados a esta altura obriga revalidar o pipeline inteiro. Não recomendo faltando pouco.
+Patch cirúrgico da emenda GOLL54/TELB4 — pequeno, defensável, fecha a cobrança da banca sobre o desfecho da verificação. Cabe fácil.
+Prior cap-ponderado via Composição do Capital da CVM — o de maior peso acadêmico (vira "implementação canônica" do BL), mas é o que dá mais trabalho: parsear os CSV da CVM, casar ON/PN por empresa, alinhar ao painel de 118.
+
+A decisão real depende de uma coisa que eu não consigo ver: sua série da Economática está ajustada por eventos ou não? Se estiver (como o nível da AMER3 sugere), o Payoff 2 encolhe para só a emenda da GOLL54, e o Payoff 1 fica sendo a verdadeira melhoria a considerar. Me confirma o status do ajuste — ou sobe o relatório da CVM que você achou e as primeiras linhas da sua matriz de preços — que eu te digo qual caminho rende mais pelo seu tempo restante, e aí monto como .ipynb.
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Os cabeçalhos já contam muita coisa. Deixa eu carregar as três séries, calcular os retornos e caçar os saltos e os trechos de preço travado — é isso que decide o diagnóstico.Identificou arquivo vazio e preparou análise dos dados relevantesIdentificou arquivo vazio e preparou análise dos dados relevantesGOLL53 está vazio — só cabeçalho, zero pregões (a ON da Gol praticamente não negocia; a linha líquida sempre foi a PN). Vou focar nas duas que têm dados.Diagnosticou problemas de dados e validou estratégia de limpezaDiagnosticou problemas de dados e validou estratégia de limpezaO 2025-06-12 apareceu: +1847%, exatamente o salto que a auditoria flagou. Mas o contexto ao redor muda tudo. Deixa eu amarrar com uma última checagem — o nível de preço ao longo dos anos — porque é isso que derruba a ideia de filtrar por preço.Analisou arquivos e destrinçou design de filtro robustoAnalisou arquivos e destrinçou design de filtro robustoAnalisei. As três séries respondem exatamente a pergunta do ajuste — e o resultado simplifica bastante o que você precisa fazer.
+Primeiro, o status do ajuste, que era a dúvida central: as séries já estão ajustadas por eventos. Economática aplica a correção retroativamente a toda a história. A prova está nos níveis: GOLL54 aparece a R$ 0,32 em 2010 (a PN da Gol, que negociava nominalmente uns R$ 20–30 na época — foi escalada pra baixo pelos grupamentos posteriores); AMER3 aparece a R$ 2.624 em 2010 (a Lojas Americanas, inflada pelo inplit 100:1 de 2024 aplicado pra trás). GOLL53 está vazio (zero pregões — a ON nunca teve liquidez).
+AMER3: não é problema nenhum
+Os retornos extremos da AMER3 são todos eventos econômicos reais, não artefato de split:
+
+2023-01-12: −77,3% (R$ 1.200 → R$ 272) — o colapso da fraude contábil de janeiro/2023.
+2024-11-14: +180% e 2024-08-15: −58% — a gangorra do distress/RJ.
+
+O inplit 100:1 foi corretamente absorvido (não há nenhum salto de +9.900% espúrio; o que existe é o nível histórico inflado, inofensivo para retorno). Para um pipeline return-based, AMER3 está limpa — mantenha, sem tocar. É coerente com o argumento anti-sobrevivência que você já defende.
+GOLL54: o +1.847% é reorganização, não grupamento simples
+O salto de 2025-06-12 (R$ 0,01027 → R$ 0,20001) é o evento de saída do Chapter 11: a equity antiga foi essencialmente zerada e emitida nova ação a outro nível, com a troca de ticker GOLL4→GOLL54. Isso não é um grupamento limpo — ajustar por um "fator" seria errado, porque o papel pré e pós-reorganização são quase claims diferentes. E o que vem depois (+250%, −70%, −61%…) é o regime de penny stock degenerado de meados de 2025 em diante (preço entre R$ 0,005 e R$ 0,20). Esse trecho cai dentro da sua janela OOS.
+A evidência que mata o filtro de preço
+Aqui está o ponto mais importante que os arquivos revelam. Olha o preço ajustado no fim de cada ano:
+          GOLL54        AMER3
+2010   R$   0,32     R$ 2.624
+2018   R$   0,33     R$ 4.037
+2020   R$   0,32     R$ 7.375
+2024   R$   0,017    R$    6,20
+2025   R$   0,006    R$    5,13
+Um piso de R$ 1 sobre o preço ajustado faria o exato oposto do que você quer: excluiria a GOLL54 em 2010, 2018, 2020 — anos em que a Gol era uma blue chip líquida e saudável — e manteria a AMER3 a R$ 7.375. O nível ajustado carrega toda a vida futura de grupamentos do ativo, então não é comparável entre ativos nem ao longo do tempo. Filtrar penny stock por preço ajustado é não só inútil, é invertido.
+Conclusão técnica: a máscara de investabilidade tem que usar o preço bruto (não ajustado) ou liquidez, nunca o preço ajustado. E aqui um cuidado a mais: ADTV sozinho também não pega a GOLL54 — em junho/2025 ela negociou R$ 1–13 milhões/dia no frenesi da reestruturação, então passaria num filtro de volume. O sinal que separa limpo "GOLL54 boa (2010, ~R$ 20 bruto)" de "GOLL54 penny (2025, ~R$ 0,01 bruto)" é o preço unitário bruto < R$ 1 na data t. A AMER3, depois do inplit, volta pra casa dos R$ 10–30 brutos — então passaria no filtro, o que está certo: distress real e tradeable, não penny.
+O que isso economiza pra você
+Você não precisa dos dados de eventos corporativos da CVM para limpeza nenhuma. A Economática já ajusta os splits limpos (AMER3 prova), e o único caso bagunçado (GOLL54) é uma reorganização que se resolve por exclusão point-in-time, não por ajuste de fator. O Payoff 2 que a gente cogitou caiu. O dado da CVM (Composição do Capital) só continua valendo para o prior cap-ponderado do BL (Payoff 1), que é um upgrade metodológico separado e opcional.
+Então o plano colapsa pra uma coisa só: a máscara point-in-time keyed no preço bruto < R$ 1 (mantendo o preço ajustado para os retornos). Isso exige uma coisa de você — exportar da Economática a série sem correção (preço nominal) desses ativos, só para alimentar a tela. Os retornos continuam vindo da série ajustada.
+Você consegue exportar a versão "sem correção" da Economática? Com ela em mãos eu monto a máscara — e aí: executar agora ou gerar como notebook (.ipynb)?
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Confirmado, e o resultado é decisivo: esse arquivo é ajustado, não "sem correção". É a mesma correção das outras três (cabeçalho idêntico, "Fechamento" / "Em R$ Real" = em reais, a moeda). A prova está na trajetória da GETI4:
+2000: R$  0,57
+2005: R$  4,28
+2010: R$ 14,55
+2015: R$ 14,46   (fim da série)
+A AES Tietê era uma elétrica madura, sem crescimento — uma utility que devolve tudo em dividendo. Preço nominal de utility não multiplica por 25 em 15 anos; isso só acontece com reinvestimento de dividendos embutido no preço (série "total return", ajustada por proventos). Ou seja, suas séries do universo são total-return — dividendo reinvestido, e o split/grupamento ancorado no preço mais recente (repara que o valor de 2015, ~R$ 14,46, bate com o nominal real da época; é a história pra trás que vem escalada).
+Duas consequências:
+A boa: seus retornos estão certos. Total-return é exatamente o que você quer num backtest de carteira — já captura o dividendo. Nada a corrigir aí.
+A que trava o plano: você não tem preço nominal em lugar nenhum dos seus dados. Toda a base é ajustada, e o preço ajustado é duplamente inútil pra detectar penny stock — distorcido pelo split (a GOLL54 boa de 2010 vira R$ 0,32) e pela deriva do dividendo reinvestido (a GETI4 saudável vira R$ 0,57 lá atrás). Não dá pra montar a tela de "preço bruto < R$ 1" com o que está em disco.
+Um detalhe que vale conferir de passagem: esse arquivo termina em 2015-12-30. Se ele é representativo do seu lote, confirma se sua base realmente cobre 2015–2025 do OOS, ou se os arquivos têm janelas truncadas.
+O problema encolheu — escolha o caminho pelo prazo
+Depois de tudo, a contaminação real é pequena e localizada: GOLL54 (a emenda de reorganização de 2025 + regime penny) e FICT3 (micro-cap cronicamente ilíquida). AMER3 está limpa. São dois ativos, em períodos específicos. Dois caminhos:
+
+Mais correto — re-exportar "sem correção". Você puxa da Economática a série de preço nominal (só dos ativos, não precisa do universo todo), e eu monto a máscara point-in-time por preço bruto < R$ 1. Custo: um novo export + passar uma segunda série de preço pelo pipeline (a ajustada para retorno, a nominal só para a tela).
+Pragmático — zero export novo. A coluna Volume$ é em R$ e não é distorcida pelo ajuste, então dá pra fazer a máscara por ADTV (liquidez) point-in-time, que pega a FICT3 de graça. O único caso que o ADTV não pega é a GOLL54 em jun/2025 (negociou R$ 1–13 mi/dia no frenesi) — esse você trata como exclusão pontual documentada: saída do Chapter 11 / troca de ticker, excluída a partir da data-com, com base em fato corporativo. Defensável e cabe no prazo.
+
+O caminho 2 não precisa de dado nenhum que você não tenha e resolve os dois ativos. O caminho 1 é mais elegante e uniforme, mas custa um export e uma frente a mais no pipeline.
+Qual você prefere? Definido isso, eu gero — e aí confirmo com você: executar agora ou entregar como .ipynb?
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Isso fecha o problema — e com uma fonte melhor do que tudo que a gente cogitou. O COTAHIST é o boletim diário bruto da B3: o PREULT é o preço do último negócio como aconteceu no dia, sem ajuste de provento nem de split. É exatamente o preço nominal "sem correção" que faltava — e você já tem. Não precisa de re-export da Economática nem dos dados da CVM.
+Mas o ouro está em dois campos que eu não esperava encontrar aqui, e que são melhores do que qualquer limiar que a gente inventasse:
+CODBDI (pos. 11–12) — a classificação oficial de situação do papel. Olha os códigos: 08 = recuperação judicial, 07 = recuperação extrajudicial, 06 = concordatária, 09 = RAET, 11 = intervenção. Isso significa que a própria B3 carimba, dia a dia, quando um papel entra em situação de distress. FICT3/Fictor (RJ), GOLL pós-Chapter 11, AMER3 (RJ depois da fraude), LUPA3 (RJ) — todos carregam esse flag exatamente nos períodos problemáticos. É point-in-time, sem viés de sobrevivência (o flag liga na data em que a empresa entra em RJ, usando só informação daquele dia) e inquestionável na banca: você não está exercendo julgamento arbitrário, está usando a classificação oficial da bolsa. O keep-set limpo é CODBDI=02 (lote padrão) + TPMERC=010 (vista).
+PREULT (pos. 109–121, formato (11)V99 → divide por 100) — preço bruto. Agora o piso de R$ 1 finalmente faz sentido, porque é o preço unitário real: GOLL54 a R$ 0,01 em 2025 cai; GOLL4 a R$ 20 em 2010 passa. Sem a distorção do ajuste retroativo que vimos ontem.
+Complementos: TOTNEG (148–152) e VOLTOT (171–188, /100) dão ADTV bruto para a tela de liquidez (pega ilíquidos crônicos). E FATCOT (211–217) = 1000 indica cotação por lote de mil ações — um flag de penny adicional, mas com ressalva: depois que a B3 padronizou cotação unitária, papéis penny recentes podem vir com FATCOT=1, então não me apoiaria nele para 2025 — uso PREULT + CODBDI como sinais primários e o FATCOT só como corroboração em dados antigos.
+A arquitetura trava assim
+
+Retornos / otimização: série ajustada da Economática (total-return), como já está. Não muda nada.
+Máscara de investabilidade: campos brutos do COTAHIST (PREULT, CODBDI, liquidez), point-in-time, a cada data de rebalanceamento.
+Chave de junção: CODNEG (ticker) + data.
+
+Um cuidado real na junção: o COTAHIST registra GOLL4 até a conversão (~meados/2025) e GOLL54 depois, enquanto a Economática rotula tudo retroativamente como GOLL54. Então o mapeamento ticker↔ticker precisa tratar essas trocas de código — provavelmente via CODISI (pos. 231–242), que é o ISIN e tende a ser mais estável que o ticker na transição.
+Detalhe de parsing: é arquivo de largura fixa, 245 bytes/registro, um por ano (COTAHIST.2010.TXT … COTAHIST.2025.TXT). Lê com read_fwf usando essas posições (lembrando que preços (11)V99 e volume (16)V99 vêm sem o ponto decimal — divide por 100), filtra TIPREG=01 e TPMERC=010.
+Duas coisas antes de eu montar: você tem os arquivos anuais cobrindo 2010 a 2025 (e não só um ano)? E o de sempre — executar agora ou gerar como notebook (.ipynb)? Esse aqui vira um notebook de parsing do COTAHIST + construção da máscara, que encaixa direto como apêndice.
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Boa — o COTAHIST é a melhor fonte possível pra isso, e eu já tenho o layout completo do PDF (Registro 01, largura fixa de 245 bytes, posições de cada campo). Antes das perguntas, deixa eu fixar os padrões que vou assumir pra você corrigir o que não bater:
+
+Parsing: read_fwf pelas posições do layout, encoding latin-1, filtrando TIPREG=01 e TPMERC=010 (vista). Preços (11)V99 ÷ 100, VOLTOT ÷ 100, TOTNEG/QUATOT inteiros.
+CODBDI entra como coluna, não como filtro — é o flag de distress (08=RJ, 07=extrajudicial, 06=concordata, 09=RAET, 11=intervenção) que você vai usar na máscara. Manter é o ponto.
+FATCOT: gero o preço bruto e um preço-por-ação normalizado (÷ FATCOT quando =1000), pra não confundir penny real com cotação por lote de mil.
+CODISI (ISIN) sempre na saída, pra você reconciliar trocas de ticker (GOLL4→GOLL54) no passo da máscara. No parsing eu não junto códigos — cada CODNEG vira sua própria pasta; misturar isso aqui seria responsabilidade do passo errado.
+Dedup: um registro por CODNEG+data no vista; se houver duplicata, registro num log em vez de adivinhar.
+Saída: …/{TICKER}/{TICKER}.csv e {TICKER}.parquet. ⚠️ Você escreveu a pasta como B3_COTAHIST_Tratatos — confirma se é isso mesmo ou Tratados, porque um nome errado joga tudo no lugar errado.
+
+E três decisões que mudam o resultado:
+P: Quais tickers processar? (gerar pasta+CSV+parquet para cada)
+R: Todos os ativos de ação da B3
+
+P: Quais colunas no arquivo de cada ticker?
+R: Todos os campos do COTAHIST (Registro 01)
+
+P: Formato da entrega?
+R: Notebook .ipynb (apêndice do TCC)
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Perfeito. Antes de empacotar o notebook, vou validar o parser de largura fixa contra a layout — quero garantir que cada posição e cada divisão decimal batem antes de te entregar.Validou parser e concebeu testes end-to-end abrangentesValidou parser e concebeu testes end-to-end abrangentesParser validado (26 campos = 245 bytes exatos, escalas decimais corretas). Agora um teste de ponta a ponta com um arquivo sintético — header, ações, uma opção e um papel em RJ — pra confirmar que o filtro e a escrita por ticker funcionam:Arquitetou notebook com parsing, tipagem e exportação por tickerArquitetou notebook com parsing, tipagem e exportação por tickerTudo validado: parser (245 bytes, escalas decimais), filtro de ações, e o teste ponta-a-ponta confirma que opção e fracionário são descartados enquanto vista e papéis em RJ (CODBDI=08) ficam, com o flag preservado. Vou montar o notebook.Apresentando notebook validado e sinalizando pontos críticosApresentando notebook validado e sinalizando pontos críticosPronto. Notebook com saídas limpas e contadores zerados, encaixa direto como apêndice. O parser foi validado aqui (245 bytes exatos, escalas decimais, filtro de ações, descarte de opção/fracionário, preservação do flag de RJ) antes de empacotar.
+O que ele faz, em 5 etapas: lê qualquer .txt da pasta de entrada → parseia o Registro 01 → mantém só ação no mercado à vista → tipa/escala e cria as derivadas → grava {TICKER}/{TICKER}.csv + .parquet. Saída com todos os campos do Registro 01, mais três que importam pra máscara: PRECO_UNIT (preço por ação, já tratando cotação por lote de mil — é o campo do piso de R$ 1), FLAG_SITUACAO (papel em RJ/concordata/RAET/intervenção no dia, via CODBDI) e CODISI (ISIN, pra reconciliar GOLL4→GOLL54 depois).
+Três coisas pra você saber antes de rodar:
+
+Confirme o nome da pasta. Deixei B3_COTAHIST_Tratatos como você escreveu, mas isolado numa constante no topo — se for Tratados, troca numa linha só.
+Precisa de pyarrow pro parquet (pip install pyarrow). Sem ele, o notebook segue e gera só o CSV, avisando.
+GOLL4 e GOLL54 saem em pastas separadas, de propósito — a junção por ISIN é responsabilidade do passo da máscara, não deste.
+
+A célula 5 (auditoria) é sua validação: rode e veja se as ESPECI cobrem seu universo e se Fictor, Gol, Americanas, Oi e Lupatech aparecem com FLAG_SITUACAO nos períodos certos. Se a lista de ESPECI mantidas estiver deixando algo seu de fora (ou puxando algo a mais), me diz que ajusto o is_acao — é o único ponto heurístico do notebook.
+Quando rodar, me manda o resumo da célula 5 que a gente parte pra construção da máscara em si (junção COTAHIST × série ajustada da Economática, por ISIN/ticker+data).
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Rodou limpo e o resultado é saudável. 893 tickers em 1,33 milhão de registros cobrindo 2010‑01‑04 a 2025‑12‑30, com papéis deslistados retidos (sem viés de sobrevivência). E o is_acao se mostrou robusto: aquele monte de ESPECI distintas não é ruído — o campo concatena tipo + marcador de evento + segmento (ex.: ON NM = Novo Mercado, PN N2 = Nível 2, ON ED = ex‑dividendo, ON EJ = ex‑juros). O mesmo ticker aparece sob várias ESPECI ao longo do tempo, e o filtro capturou todas as variantes de ON/PN/UNT. Os poucos itens estranhos no rabo da lista (ON <, PN (P, ON *) são marcadores raros com contagem ínfima — inofensivos.
+Mas o dado mais importante está no flag de situação especial, e ele traz um aviso que muda o desenho da máscara.
+O CODBDI acertou em cheio os casos de RJ brasileira — 93 tickers, e os exemplos já mostram ATOM3 (a linhagem da Fictor/FICT3), AMER3, e adiante devem vir OIBR3, LUPA3. Exatamente o sinal point‑in‑time que queríamos.
+Mas ele quase certamente vai MISSAR a Gol. O CODBDI 06–11 são processos da lei brasileira (RJ, concordata, RAET, intervenção). A Gol entrou em Chapter 11 nos EUA, não em recuperação judicial no Brasil — então GOLL4/GOLL54 provavelmente continuaram com CODBDI=02 o tempo todo, e FLAG_SITUACAO nunca liga pra eles. Se a máscara dependesse só do flag, o regime penny da GOLL54 em 2025 passaria batido.
+É por isso que a gente construiu o PRECO_UNIT também: o flag pega a RJ brasileira; o piso de preço pega a Gol. Os dois são complementares, e agora temos a evidência de que nenhum sozinho basta.
+Roda essa checagem rápida (com o df ainda em memória) — ela confirma a hipótese da Gol e fecha o caso:
+pythonfor t in ['GOLL4','GOLL54','FICT3','ATOM3','AMER3','OIBR3','LUPA3']:
+    g = df[df['CODNEG'] == t]
+    if g.empty:
+        print(f"{t}: AUSENTE"); continue
+    pmin = g.groupby('ANO')['PRECO_UNIT'].min()
+    sub1 = list(pmin[pmin < 1.0].index)
+    print(f"{t}: {len(g)} pregões | FLAG_SITUACAO já True? {g['FLAG_SITUACAO'].any()} | anos com preço < R$1: {sub1}")
+
+# cobertura do seu universo — cole sua lista dos 118:
+# meus_118 = [...]
+# print('faltando no COTAHIST:', sorted(set(meus_118) - set(df['CODNEG'].unique())))
+A previsão: FICT3/ATOM3, AMER3, OIBR3, LUPA3 com FLAG_SITUACAO=True; GOLL4/GOLL54 com False, mas com anos sub‑R$1 — provando que o piso é o que salva a Gol.
+Me manda o retorno disso (e a checagem de cobertura dos 118). Com isso confirmado, partimos pra máscara em si — aí a gente decide os parâmetros (piso de R$ 1 no PRECO_UNIT, piso de ADTV, janela de avaliação, como combinar flag+preço+liquidez, e a reconciliação GOLL4↔GOLL54 por ISIN). E pra esse próximo: executar agora ou gerar como .ipynb?Você disse: GOLL4: 3827 pregões | FLAGSITUACAO já True?GOLL4: 3827 pregões | FLAG_SITUACAO já True? False | anos com preço < R$1: [2024, 2025] GOLL54: 140 pregões | FLAG_SITUACAO já True? False | anos com preço < R$1: [2025] FICT3: 256 pregões | FLAG_SITUACAO já True? False | anos com preço < R$1: [] ATOM3: 2279 pregões | FLAG_SITUACAO já True? True | anos com preço < R$1: [2015, 2016] AMER3: 1113 pregões | FLAG_SITUACAO já True? True | anos com preço < R$1: [2023, 2024] OIBR3: 3402 pregões | FLAG_SITUACAO já True? True | anos com preço < R$1: [2016, 2019, 2020, 2021, 2022, 2023, 2024, 2025] LUPA3: 3952 pregões | FLAG_SITUACAO já True? True | anos com preço < R$1: [2013, 2014, 2015, 2016, 2020, 2025]5 de jun.Claude respondeu: O resultado confirma a hipótese e revela uma coisa que muda o plano.O resultado confirma a hipótese e revela uma coisa que muda o plano. Deixa eu separar o que bateu do que surpreendeu.
+Confirmado, como previsto: GOLL4/GOLL54 com FLAG_SITUACAO=False mas sub‑R$1 (2024–2025) — o Chapter 11 não dispara o CODBDI brasileiro, então só o piso de preço salva a Gol. E AMER3, OIBR3, LUPA3 com flag True nos períodos certos. Os dois sinais são mesmo complementares, agora com evidência.
+A surpresa que importa — FICT3. Olha: FICT3 tem FLAG_SITUACAO=False e zero anos sub‑R$1. Ou seja, nenhum dos dois critérios pega a FICT3 no COTAHIST. Mas a linhagem dela, ATOM3, tem flag True (2015–2016) e preço sub‑R$1. Isso quase certamente significa que houve troca de ticker ATOM3 → FICT3 (Atom Participações virou Fictor Alimentos), e os 256 pregões de FICT3 no COTAHIST são o período recente, já repaginado — possivelmente fora de RJ formal naquele intervalo e com preço acima de R$1 nominal.
+Aqui mora uma armadilha de raciocínio que vale explicitar: você vinha tratando FICT3 como "a penny stock contaminante". Mas no COTAHIST, sob o código FICT3, ela não parece penny nem em RJ. O problema que você viu nos dados da Economática estava na série ajustada rotulada FICT3 (que provavelmente emenda a história inteira de ATOM3 sob o nome novo). Então a contaminação real é da linhagem ATOM3→FICT3, e a máscara precisa enxergar isso como um fio só.
+E é exatamente o mesmo problema da Gol (GOLL4→GOLL54): trocas de ticker partem a história em dois códigos, e qualquer critério que olhe um código isolado erra. Por isso a reconciliação por ISIN não é um detalhe de acabamento — é o primeiro passo da máscara, não o último. Sem unir ATOM3+FICT3 e GOLL4+GOLL54 por CODISI, nem o flag nem o preço funcionam direito.
+Então a ordem da máscara fica:
+
+Reconciliar linhagens por ISIN (CODISI) — colapsar ATOM3↔FICT3, GOLL4↔GOLL54 etc. numa identidade econômica única. Isso já resolve metade do problema.
+Avaliar investabilidade point‑in‑time sobre a linhagem unida, combinando os três sinais: FLAG_SITUACAO (RJ brasileira), PRECO_UNIT < piso (penny, pega a Gol), e ADTV mínimo (ilíquido crônico).
+Mascarar peso a cada rebalanceamento, sobre o conjunto investável daquela data.
+
+Antes de eu montar, preciso confirmar uma coisa que decide a viabilidade do passo 1. Roda isto:
+pythonfor t in ['GOLL4','GOLL54','ATOM3','FICT3','OIBR3','LUPA3','AMER3']:
+    g = df[df['CODNEG'] == t]
+    if g.empty:
+        print(f"{t}: AUSENTE"); continue
+    isins = g['CODISI'].dropna().unique()
+    print(f"{t:7s} | ISIN(s): {list(isins)} | {g['DATA_PREGAO'].min().date()} -> {g['DATA_PREGAO'].max().date()}")
+O que estou checando: se ATOM3 e FICT3 compartilham o mesmo ISIN (e idem GOLL4/GOLL54), a reconciliação é trivial e limpa. Se o ISIN também mudou na troca de ticker — o que acontece quando há reorganização societária, e a Fictor/Chapter 11 são candidatas fortes —, aí o ISIN sozinho não basta e a gente precisa de uma tabela de mapeamento manual para esses poucos casos. O retorno desse print decide qual dos dois caminhos seguimos.
+Manda o resultado (e, se tiver à mão, a lista dos 118 pra eu cruzar a cobertura). Com isso eu fecho o desenho e gero a máscara — e aí: executar agora ou .ipynb?Você disse: GOLL4   | ISIN(s): ['BRGOLLACNPR4'] | 2010-01-04 -> 2025-06-11 GOLL54  | ISIN(s): ['BRGOLLA01PR5'] | 2025-06-12 -> 2025-12-30 ATOM3   | ISIN(s): ['BRATOMACNOR1…GOLL4   | ISIN(s): ['BRGOLLACNPR4'] | 2010-01-04 -> 2025-06-11 GOLL54  | ISIN(s): ['BRGOLLA01PR5'] | 2025-06-12 -> 2025-12-30 ATOM3   | ISIN(s): ['BRATOMACNOR1'] | 2015-10-14 -> 2024-12-18 FICT3   | ISIN(s): ['BRFICTACNOR3'] | 2024-12-19 -> 2025-12-30 OIBR3   | ISIN(s): ['BROIBRACNOR1'] | 2012-04-09 -> 2025-12-30 LUPA3   | ISIN(s): ['BRLUPAACNOR8'] | 2010-01-04 -> 2025-12-30 AMER3   | ISIN(s): ['BRAMERACNOR6'] | 2021-07-19 -> 2025-12-305 de jun.Claude respondeu: O print fecha a questão — e confirma o pior caso, o que é bom ter descoberto agora e não depois.O print fecha a questão — e confirma o pior caso, o que é bom ter descoberto agora e não depois.
+O ISIN muda junto com o ticker. GOLL4 (BRGOLLACNPR4) → GOLL54 (BRGOLLA01PR5); ATOM3 (BRATOMACNOR1) → FICT3 (BRFICTACNOR3). Não é só o código de pregão que troca: é o ISIN inteiro, porque houve reorganização societária (o A01 no ISIN da Gol é a marca da reestruturação do Chapter 11; a Fictor idem). E repara na continuidade temporal perfeita: GOLL4 vai até 2025‑06‑11, GOLL54 começa em 2025‑06‑12; ATOM3 até 2024‑12‑18, FICT3 a partir de 2024‑12‑19. Sem sobreposição, encaixe de um dia. É a assinatura inequívoca de uma troca de identidade.
+Isso mata a ideia de reconciliar por ISIN automaticamente — o ISIN é tão descontínuo quanto o ticker. Mas a própria descoberta entrega o método certo: a continuidade de datas é o sinal de junção, não o ISIN.
+Aqui preciso te dar um aviso honesto sobre uma armadilha de viés de sobrevivência que aparece justo neste ponto. Existem dois jeitos de unir as linhagens, e eles não são equivalentes:
+
+Reconstruir a história "pra trás" a partir do código atual (dizer "FICT3 é a continuação de ATOM3, então trato como um ativo só") — isso é perigoso, porque você só sabe que FICT3 existe porque ela sobreviveu pra ganhar um código novo. Empresas que simplesmente quebraram e saíram não têm "código novo" pra você emendar. Reconstruir cadeias só dos sobreviventes reintroduz viés de sobrevivência pela porta dos fundos — o mesmo erro que a gente vem evitando desde o começo.
+Tratar cada troca como morte + nascimento — ATOM3 "morre" em 2024‑12‑18, FICT3 "nasce" em 2024‑12‑19. A carteira detinha ATOM3, sofreu o que sofreu até o evento, e na data do evento o ativo sai do investável (delisting do código antigo). O código novo, se e quando reentrar, é avaliado pelos seus próprios méritos point‑in‑time. Isto é livre de viés e é como um fundo real viveria o evento.
+
+Para a sua máscara, o segundo caminho é o correto — e ele é mais simples, porque você não precisa de uma tabela de mapeamento de linhagens. Cada código é tratado como um ativo independente, e os três sinais (flag de RJ, PRECO_UNIT < piso, ADTV) decidem investabilidade em cada data. Veja como isso resolve cada caso sem nenhuma emenda manual:
+
+GOLL4: sub‑R$1 já em 2024 → o piso de preço o tira do investável bem antes do evento de junho/2025. O salto de +1.847% nunca entra, porque na data dele a GOLL4 já estava mascarada.
+GOLL54: nasce em jun/2025 já penny (sub‑R$1) → entra já mascarada pelo piso. Nunca recebe peso.
+ATOM3: flag de RJ em 2015–2016 e sub‑R$1 → mascarada nos anos ruins pelos dois critérios.
+FICT3: nasce em dez/2024, sem flag e (no COTAHIST nominal) sem sub‑R$1 — então, pelos critérios objetivos, ela seria investável. E aqui é onde você precisa de uma decisão consciente: é uma micro‑cap recém‑repaginada saindo de uma reorganização. Se o ADTV dela for baixo, o piso de liquidez a pega. Se não for, ela passa — e tudo bem, porque o critério é objetivo e point‑in‑time. O que você não pode fazer é excluí‑la "porque sabe que é a Fictor problemática" — isso seria julgamento ex‑post.
+
+Repara no ganho: o desenho "morte + nascimento" não só evita o viés como dispensa toda a engenharia de reconciliação que a gente vinha planejando. Os três sinais objetivos, aplicados código a código, data a data, cobrem todos os casos.
+Resta um detalhe operacional na fronteira da junção, do lado dos retornos (não da máscara): a série ajustada da Economática emenda a história toda sob o código atual (FICT3, GOLL54), enquanto sua matriz de retorno precisa parar de contar o ativo quando ele sai do investável. Como a máscara já zera o peso no evento, o retorno espúrio da emenda (o +1.847%) é multiplicado por peso zero — então a máscara protege os retornos automaticamente, desde que ela seja aplicada antes de o retorno daquela data entrar no acumulado da carteira. Esse é o ponto de ordem de operações que eu vou cuidar no código.
+Então o desenho final da máscara, sem tabela de mapeamento:
+
+Para cada código, em cada data de rebalanceamento t, usando só dados até t: investável = (não FLAG_SITUACAO) E (PRECO_UNIT ≥ piso_preço) E (ADTV_trailing ≥ piso_liquidez).
+Zera o peso dos não‑investáveis e renormaliza sobre os sobreviventes daquela data.
+
+Parâmetros que preciso fixar com você antes de gerar:
+
+Piso de preço: R$ 1,00 no PRECO_UNIT? (é o número clássico de penny stock e o que você vinha usando)
+Piso de liquidez (ADTV): uma janela móvel de quê — 21 pregões? 63? — e um corte em R$ (ex.: R$ 500 mil/dia), ou prefere percentil do universo?
+Janela de avaliação: o sinal em t olha o último pregão, ou uma mediana móvel curta (ex.: 21d) pra não oscilar com um dia solto?
+
+Me responde esses três (ou diz "usa o default sensato" que eu escolho e justifico), manda a lista dos 118 pra eu cruzar cobertura, e aí: a máscara — executar agora ou gerar como .ipynb?
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+O cruzamento revelou algo que reposiciona toda a discussão da máscara — e preciso ser direto com você sobre isso. Deixa eu confirmar um detalhe primeiro:Listing the 9 tickers excluded by the Etapa VI adjusted-price filterListing the 9 tickers excluded by the Etapa VI adjusted-price filterTenho que te dar uma notícia importante, porque o que achei muda a prioridade.
+Sua "Etapa VI" está filtrando o artefato de ajuste — e com viés de sobrevivência
+O filtro preço max ajustado > R$ 1.000 exclui AMER3, OIBR3, LUPA3, PDGR3, GFSA3, VIVR3, OIBR4, NEXP3, RCSL4. Lembra do que a gente estabeleceu há três turnos? O preço ajustado da Economática é inflado retroativamente quando há grupamento. AMER3 mostra R$ 12 mil em 2010 por causa do inplit 100:1 aplicado pra trás — um artefato cosmético, inofensivo aos retornos. O "max ajustado > R$ 1.000" é, na prática, um detector de "esse papel fez um grupamento grande". E como grupamento é remédio de penny stock, ele acaba pegando os distressed — pelo motivo errado.
+Dois problemas sérios nisso:
+Primeiro, é viés de sobrevivência. OIBR3 era uma blue chip de telecom líquida em 2012–2014; AMER3 (Lojas Americanas) foi blue chip por uma década antes da fraude de 2023. Excluí-los da amostra inteira por causa de um grupamento que veio lá no fim joga fora todos os anos bons deles — você os remove porque quebraram. É exatamente o erro que a gente vem combatendo desde o início, entrando pela porta dos fundos.
+Segundo, e mais grave para o seu resultado: ele não pega a Gol, e a Gol está no seu universo final. GOLL54 passou (a série da Gol foi deflacionada para ~R$ 0,30, não inflada, então não cruza o teto de R$ 1.000) e está entre os 122. FICT3 idem. Ou seja, os dois papéis de troca-de-linhagem que mais nos preocuparam continuam dentro, penny em 2025, contaminando — enquanto os nove "max > 1.000" foram excluídos com viés.
+Resumindo o estado real: o filtro que você tem remove os papéis errados do jeito errado, e deixa passar os certos.
+O que isso significa para a máscara
+A máscara point-in-time do COTAHIST que a gente vinha construindo é exatamente o substituto principiado da Etapa VI. Ela faz, com critério limpo, o que a Etapa VI faz por acidente — e sem viés. Mas isso te coloca diante de uma decisão de escopo, e eu vou separar em duas para você não ter que comprar tudo de uma vez:
+Decisão 1 — os 9 da Etapa VI (rigor opcional). O ideal metodológico é re-incluir esses 9 e deixar a máscara point-in-time mascará-los só nos anos ruins (preservando os anos bons de OIBR3, AMER3 etc.). Isso elimina o viés de sobrevivência e é o que uma banca atenta cobraria. Custo: re-rodar o pipeline, universo cresce de 122 para até 131, e seus resultados-título podem mudar. Se o prazo não permitir, a alternativa honesta é manter a exclusão e declará-la como limitação — mas aí, na escrita, troque a justificativa: não diga "integridade comprometida" (não está — os retornos são válidos), diga "exclusão de papéis que passaram por grupamento severo, ciente do viés de sobrevivência introduzido". Honestidade sobre o que o filtro faz de fato.
+Decisão 2 — GOLL54 e FICT3 (não é opcional). Esses estão no seu universo final e precisam da máscara, independentemente da Decisão 1. Aqui mora uma sutileza de junção que preciso te avisar: sua série de retorno da Economática rotula a história toda sob o código atual (GOLL54, FICT3), mas o COTAHIST guarda o preço sob o código vigente em cada data — GOLL4 até 2025‑06‑11, GOLL54 depois; ATOM3 até 2024‑12‑18, FICT3 depois. Para a máscara enxergar o período penny da Gol em 2024 (que está sob GOLL4 no COTAHIST), a junção precisa de uma pontezinha de linhagem — não para fundir economicamente (a decisão morte+nascimento continua valendo para investabilidade), mas só como chave de junção entre a série relabelada e o preço point-in-time. Eu construo essa ponte a partir da continuidade de datas que já vimos (encaixe de um dia, sem sobreposição).
+Um alerta relacionado: vários nomes no seu universo final parecem ser renomeações recentes — AXIA3/AXIA6, MBRF3, MOTV3, RIAA3, EMBJ3, ISAE4. Se forem trocas de ticker (empresa saudável só mudou de código), não criam problema de investabilidade, mas criam o mesmo problema de junção: o COTAHIST só tem o código novo no fim do período. Para esses não importa (ficam investáveis o tempo todo), mas eu preciso saber que existem para a junção não deixar buracos silenciosos. Vou incluir uma checagem que lista quais dos 122 têm cobertura COTAHIST incompleta sob o próprio código.
+O que preciso de você
+
+Decisão 1: re-incluir os 9 (rigor, re-roda tudo) ou manter excluídos com a justificativa corrigida (rápido)?
+Os três parâmetros da máscara que ficaram pendentes — piso de preço (R$ 1 no PRECO_UNIT?), piso de liquidez (janela + corte em R$ ou percentil?), janela de avaliação (último pregão ou mediana de 21d?). Ou só diz "default sensato".
+
+Com a Decisão 1 e os parâmetros, eu monto a máscara — com a ponte de linhagem e a checagem de cobertura embutidas. E, como sempre: executar agora ou gerar como .ipynb?Você disse: claude, com esse pin point in time eu poderia aumentar muito meu numero de acoes, uma vez que toda acao listada nova poderia entrar a cada mes e outra acao des…claude, com esse pin point in time eu poderia aumentar muito meu numero de acoes, uma vez que toda acao listada nova poderia entrar a cada mes e outra acao deslistada poderia sair, sem prejuizo, somente da janela de treinamento.5 de jun.Claude respondeu: Você está certo — e é mais do que certo: isso tem nome e é o padrão-ouro da literatura empírica.Validou insight metodológico, identificou restrições técnicas e ponderou trade-offsValidou insight metodológico, identificou restrições técnicas e ponderou trade-offsVocê está certo — e é mais do que certo: isso tem nome e é o padrão-ouro da literatura empírica. Chama-se universo dinâmico point-in-time, e é assim que CRSP/Compustat são usados em papers sérios e como um fundo de verdade opera. Os ganhos são reais e grandes: zero viés de sobrevivência (deslistadas participam enquanto vivas, saem quando morrem), zero viés de incubação (IPOs entram quando de fato ficaram disponíveis, não backfilladas), e a seção transversal salta de 122 para talvez 250–400 nomes. Seu instinto está afiado.
+Mas deixa eu ser honesto sobre uma coisa: aquele "sem prejuízo, somente da janela de treinamento" está carregando o problema inteiro nas costas. Esse "somente" é a pegadinha.
+A investabilidade é um portão; a estimabilidade é outro
+Uma ação recém-listada pode ser investável no dia 1 (preço ok, liquidez ok, não está em RJ). Mas ela não pode entrar no otimizador no dia 1, porque MPT/PMPT precisam estimar μ e Σ — e você não estima a covariância de um papel com 40 observações contra outros com 15 anos. Então existem dois portões distintos, e você só mencionou o primeiro:
+
+Investabilidade (a máscara que a gente desenhou): preço, liquidez, situação especial.
+Estimabilidade: histórico mínimo para entrar na matriz de covariância (ex.: 252 ou 504 pregões).
+
+Um IPO de 2018 passa no portão 1 imediatamente, mas só passa no portão 2 lá por 2019–2020. Logo, o universo não cresce "a cada nova listada por mês" — cresce "a cada listada que acumulou histórico suficiente". O "somente da janela de treinamento" não é um detalhe; é o que limita o crescimento.
+E tem o problema da matriz desbalanceada
+Quando a composição muda todo mês, a Σ é estimada sobre um painel desbalanceado — uns ativos com 15 anos, outros com 8 meses. Ledoit-Wolf sobre isso fica mal-condicionado, e a matriz pode até deixar de ser positiva-definida se você usar pares com observações incompletas. Tem solução (exigir janela comum mínima, encolher mais forte, descartar quem não tem N meses), mas não é de graça. E mais: universo dinâmico casa mal com sua janela expansiva — ele pede janela rolante (lookback fixo), o que é outra mudança de arquitetura (e, de quebra, ajudaria no MinCDaR que a gente viu degenerar com a janela longa).
+A conta honesta de escopo
+Preciso te dizer isso com clareza, porque eu venho te levando cada vez mais fundo na reengenharia (auditoria → penny → CVM → COTAHIST → máscara → agora universo dinâmico) e meu papel não é alimentar perfeccionismo que ameace seu prazo. O universo dinâmico não é um ajuste — é uma troca de arquitetura: reescreve a construção do universo, reescreve o loop de estimação, re-roda tudo, re-abre seus resultados já fechados e reescreve boa parte do Capítulo 3. Você está na reta final. Isso é provavelmente semanas, não dias, e seu achado-título seria recalculado sobre um universo diferente — pode segurar (aliás, com N maior, o argumento DeMiguel costuma ficar mais forte, porque modelos complexos têm mais espaço para overfittar erro de estimação), pode não segurar. O risco é real.
+A decisão — e um meio-termo
+O ponto que talvez você não esteja vendo: o ganho que te empolgou (acabar com o viés de sobrevivência) você já captura sem expandir o universo. A máscara point-in-time sobre o seu universo definido (deixar entrar/sair conforme degradam ou se recuperam, dia a dia) já mata o viés. A expansão para todas as listadas é um extra — bom, mas é a parte cara.
+Então, três caminhos, e a escolha é sua (é decisão de escopo de TCC, com seu prazo, não minha):
+
+Completo: universo dinâmico point-in-time de verdade. Mais forte que existe, maior risco/tempo.
+Meio-termo (o que eu faria no seu lugar, perto do deadline): mantém um universo-candidato definido, aplica a máscara point-in-time para entradas/saídas — captura o fim do viés de sobrevivência — e apresenta o universo dinâmico pleno como desenho ideal / trabalho futuro ou uma nota de robustez. Defensável e entregável.
+Mínimo: só a máscara nos nomes que já estão dentro (GOLL54, FICT3), como combinamos antes.
+
+Antes de eu codar qualquer coisa: qual desses serve ao seu prazo? Se for o completo, a gente conversa sobre os dois portões e a janela rolante com calma, porque aí o desenho muda de figura.Você disse: claude, eu nao gostei de pensar em refazer isso tudo, queria uma solucao mais simples, somente excluir esses ativos problematicos,  eu acho que tenho tantos at…claude, eu nao gostei de pensar em refazer isso tudo, queria uma solucao mais simples, somente excluir esses ativos problematicos,  eu acho que tenho tantos ativos investaveis que retirar um ou outro problematico nao vai dar problema, principalmente se eu falar que a cotacao no mes de janeiro de 2010 esta distorcida por eventos futuros.5 de jun.Claude respondeu: Concordo — e é a decisão certa para onde você está.Concordo — e é a decisão certa para onde você está. Você tem 122 nomes; tirar um punhado de problemáticos não mexe na estatística e te poupa de reabrir tudo. Deixa eu só te ajudar a fazer isso de um jeito que sobreviva a uma pergunta da banca, porque a justificativa importa mais que a exclusão em si.
+Primeiro, um cuidado honesto sobre o argumento que você quer usar. "A cotação de janeiro/2010 está distorcida por eventos futuros" é verdadeiro e elegante — é literalmente o ajuste retroativo de grupamento que a gente diagnosticou (AMER3 a R$ 12 mil em 2010). Mas ele justifica limpar um ativo cuja série está deformada; ele não justifica, sozinho, decidir quais ativos saem. Se a regra de exclusão for "preço ajustado distorcido", a banca pode perguntar: "e a GOLL54, que também tem série distorcida mas pra baixo, por que ficou?". O argumento da distorção explica o sintoma, não o critério. Você precisa de um critério que valha igual para todos.
+O critério limpo, que você já tem nas mãos e que vale uniformemente, é o preço nominal bruto do COTAHIST: um ativo sai se, no período de avaliação, foi efetivamente uma penny stock (preço unitário real abaixo de R$ 1) ou esteve em situação especial (o CODBDI de RJ). Isso não depende do artefato de ajuste, se aplica do mesmo jeito a AMER3 e à GOLL54, e responde a pergunta da banca antes dela ser feita. A distorção da cotação você cita como evidência corroborante de por que a série ajustada não servia para esse julgamento — não como o critério.
+E aqui há um detalhe que casa perfeitamente com o seu sossego: como é exclusão estática (o ativo sai inteiro, não mês a mês), eu não preciso da ponte de linhagem nem da reengenharia. É só identificar os nomes e removê-los do universo antes do pipeline rodar. Simples como você quer.
+Mas tem um ponto que eu ia faltar com você se não levantasse: GOLL54 e FICT3 estão no seu universo final, e são justamente os piores casos. A exclusão estática só resolve seu problema se incluir esses dois. Se você tirar AMER3/OIBR3/LUPA3 (que o seu filtro já tirou) mas deixar GOLL54 e FICT3, você removeu os menos graves e manteve os mais graves. Então a lista de exclusão tem que ser construída pelo critério objetivo, não pela lista antiga.
+Proposta concreta, alinhada ao que você quer:
+Eu te entrego um notebook curto que, usando os dados do COTAHIST que você já gerou, classifica cada um dos 122 como "manter" ou "excluir" por uma regra única e transparente — penny real (mediana de PRECO_UNIT < R$ 1 em parte material do período) ou FLAG_SITUACAO em parte material do período — e cospe uma tabela com o motivo objetivo de cada exclusão, pronta para virar parágrafo no Capítulo 3. Você revisa a lista (são poucos nomes), aplica, e re-roda só uma vez. Sem máscara mensal, sem ponte de linhagem, sem janela rolante.
+Antes de gerar, duas definições que eu preciso de você para a regra não ser arbitrária:
+
+Quão "penny" para sair? Sugiro: mediana do PRECO_UNIT abaixo de R$ 1 em qualquer ano do período, ou em pelo menos X% dos pregões. Qual corte te parece defensável — "qualquer ano abaixo de R$ 1" (mais rígido, pega mais nomes) ou "≥ 20% dos pregões abaixo de R$ 1" (mais tolerante)?
+Situação especial conta sozinha? Um ativo que entrou em RJ por um período curto e se recuperou — sai do universo ou fica? (Ex.: alguns nomes tiveram RJ e voltaram.)
+
+Me responde esses dois (ou "default sensato"), e eu monto o classificador. E o de sempre: executar agora ou gerar como .ipynb?Você disse: criar um resumo executivo do que foi feito e do que falta concluircriar um resumo executivo do que foi feito e do que falta concluir5 de jun.Claude respondeu: Resumo Executivo — Ciclo de Integridade de Dados e UniversoSintetizou achados de auditoria e estruturou próximos passosSintetizou achados de auditoria e estruturou próximos passosResumo Executivo — Ciclo de Integridade de Dados e Universo
+Contexto. O que começou como revisão de um relatório de auditoria evoluiu para uma investigação de integridade do universo de ativos do TCC (MPT × PMPT, B3, 2010–2025). A conclusão central: os defeitos "críticos" apontados pela auditoria foram diagnósticos errados, e o problema real é contaminação por penny stocks e por trocas de linhagem societária, agravada por um filtro de exclusão falho.
+O que foi feito
+Correção dos diagnósticos da auditoria. FICT3 não é um ticker sentinela/dummy — é a Fictor Alimentos (real, ex‑ATOM3). GOLL54 não é inválido — é o código legítimo da Gol PN pós‑Chapter 11. Ambos são penny stocks reais, não erros de dado.
+Diagnóstico da fonte de preço. As séries da Economática são total‑return ajustadas (dividendo reinvestido + ajuste retroativo de grupamento). Isso torna o preço ajustado inútil para detectar penny stock: a GOLL54 saudável de 2010 aparece a R$ 0,32 e a AMER3 saudável aparece a R$ 2.624, por puro artefato de ajuste. Para a tela de preço é preciso o preço nominal bruto.
+Identificação e processamento da fonte certa — COTAHIST/B3. O campo PREULT traz o preço bruto não ajustado, e o CODBDI carimba oficialmente, dia a dia, situação especial (RJ, concordata, RAET, intervenção). Entreguei e você rodou o notebook de tratamento: 893 tickers, 1,33 milhão de registros, 2010‑2025, com PRECO_UNIT (preço por ação), FLAG_SITUACAO (distress) e CODISI (ISIN) por ticker.
+Validações empíricas. Confirmamos que o CODBDI pega a RJ brasileira (ATOM3, AMER3, OIBR3, LUPA3) mas erra a Gol (Chapter 11 é processo nos EUA) — daí preço e flag serem complementares. Confirmamos também que, na troca de linhagem, ticker e ISIN mudam juntos (GOLL4→GOLL54, ATOM3→FICT3), com encaixe de um dia — o que invalida reconciliação automática por ISIN.
+Achado decisivo sobre o seu universo (122 finais / 374 excluídos). O filtro "Etapa VI" (preço max ajustado > R$ 1.000) exclui 9 nomes (AMER3, OIBR3, OIBR4, LUPA3, PDGR3, GFSA3, VIVR3, NEXP3, RCSL4) detectando o artefato de ajuste, com viés de sobrevivência (joga fora os anos saudáveis de blue chips que só colapsaram depois). Pior: GOLL54 e FICT3 — os piores casos — estão dentro dos 122, penny em 2025. O filtro atual remove os nomes errados do jeito errado e mantém os certos.
+Decisões metodológicas fixadas
+
+Não migrar para universo dinâmico point‑in‑time pleno: é troca de arquitetura (dois portões investabilidade × estimabilidade, matriz desbalanceada, janela rolante), com risco ao prazo e reabertura de resultados.
+Exclusão estática dos ativos problemáticos, por um critério objetivo e uniforme (penny real no PRECO_UNIT < R$ 1 ou FLAG_SITUACAO), aplicado igual a todos — não pela narrativa "cotação de 2010 distorcida", que serve como evidência corroborante, não como critério.
+Manter as 9 exclusões da Etapa VI, mas corrigir a justificativa escrita: reconhecer o viés de sobrevivência, em vez de alegar "integridade comprometida" (os retornos são válidos).
+Retornos/otimização seguem na série ajustada da Economática; o COTAHIST serve apenas para construir a lista de exclusão. Sem ponte de linhagem, sem reengenharia.
+
+O que falta concluir
+
+Você definir dois parâmetros do classificador: o corte de "penny" ("qualquer ano < R$ 1" vs "≥ 20% dos pregões < R$ 1") e se RJ curta com recuperação posterior exclui ou não.
+Eu gerar o classificador — notebook curto que rotula os 122 em manter/excluir com o motivo objetivo de cada um, pronto para virar parágrafo.
+Você revisar a lista (poucos nomes), aplicar e re‑rodar o pipeline uma única vez, garantindo que GOLL54 e FICT3 entrem na exclusão.
+Checar a cobertura COTAHIST dos 122 (nomes renomeados como AXIA3, MBRF3, MOTV3 etc. podem ter histórico sob código antigo).
+Escrever o trecho do Capítulo 3 sobre construção do universo, critério de exclusão e limitações declaradas.
+
+Em aberto da auditoria original (fora desta thread)
+Itens que continuam pendentes e independentes deste ciclo: o MinCDaR degenerado (CAGR −1,75%, MaxDD −81,8% — precisa da guarda pós‑solver / investigação); limpeza do requirements.txt (tensorflow/keras/hmmlearn não usados, versões não fixadas); o prior 1/N do BL (vs cap‑ponderado), δ=2,5 fixo e turnover >800% (declarar como limitação ou aprimorar); e housekeeping (três cópias de ledoit_wolf(), --inplace no nbconvert).
+
+Quer que eu transforme isso num arquivo (.md ou .docx) para anexar ao seu controle do TCC? E, retomando o ponto onde paramos: me diz os dois parâmetros do classificador (ou "default sensato") que eu já monto a próxima entrega.Você disse: sim, em um md.sim, em um md. "qualquer ano abaixo de R$ 1" e entrou em RJ por um período curto. Esse ipynb vai ser feito em cima do Cotahist? me ajude a desenvolver o prompt me fazendo perguntas.5 de jun.Claude respondeu: Vou montar o resumo em .Orchestrated classifier design, surfaced lineage complexities, formulated clarifying questionsOrchestrated classifier design, surfaced lineage complexities, formulated clarifying questionsVou montar o resumo em .md e, sim, o classificador é construído em cima do COTAHIST tratado (os arquivos por ticker que você gerou) cruzado com a tickers_finais.csv. Primeiro o documento:Criou um arquivo, leu um arquivoCriou um arquivo, leu um arquivoSobre o classificador: sim, ele roda em cima do COTAHIST tratado (lê os arquivos por ticker da pasta B3_COTAHIST_Tratatos) cruzando com a tickers_finais.csv. Os padrões que vou assumir, pra você corrigir o que não bater:
+
+Entrada: pasta B3_COTAHIST_Tratatos + tickers_finais.csv (os 122). Avalia só os 122 (não os 893).
+Penny (já definido): flag se em qualquer ano o preço cair abaixo de R$ 1. Vou operacionalizar pelo mínimo anual do PRECO_UNIT (foi a métrica do print que você viu) e também reportar a mediana anual ao lado — assim você enxerga se o mínimo está pegando algum saudável que só encostou em R$ 1 num dia, e troca se quiser.
+Saída: uma tabela manter/excluir com o motivo objetivo e as métricas de cada nome, mais um tickers_excluidos_integridade.csv e a tickers_finais_v2.csv já filtrada — pronto pra re-rodar e pra virar parágrafo no Cap. 3.
+
+Antes de eu escrever o prompt/notebook, três definições que mudam quem entra na lista de exclusão — e uma delas é a pegadinha da FICT3 que preciso te mostrar:Você disse: P: Em que janela a regra procura o problema (penny / RJ)?P: Em que janela a regra procura o problema (penny / RJ)?
+R: Todo o período (2010–2025)P: Papel que entrou em situação especial por período CURTO e se recuperou:
+R: Qualquer RJ exclui (qualquer dia com FLAG_SITUACAO)P: FICT3 sob o código próprio NÃO é penny nem RJ no COTAHIST. Como tratar?
+R: Mini-mapa de linhagem: olhar ATOM3 e excluir FICT35 de jun.Claude respondeu: Fechado — tenho o spec completo: janela 2010–2025, qualquer dia de situação especial exclui, e mini-mapa de linhagem (FICT3←ATOM3, GOLL54←GOLL4).Refinando detalhes cosméticos da representação numéricaRefinando detalhes cosméticos da representação numéricaFechado — tenho o spec completo: janela 2010–2025, qualquer dia de situação especial exclui, e mini-mapa de linhagem (FICT3←ATOM3, GOLL54←GOLL4). Antes de empacotar, valido a lógica do classificador com dados sintéticos cobrindo cada caso:Architected comprehensive notebook validating ticker lineage and exclusion criteriaArchitected comprehensive notebook validating ticker lineage and exclusion criteriaTodos os casos passaram: PETR4 mantém; GOLL54 e XPTO3 (RJ curta) saem; FICT3 sai via ATOM3; e a renomeada saudável (MBRF3) fica. A lógica está correta — vou empacotar, corrigindo a formatação dos anos e lendo direto do COTAHIST tratado.Executou um comando, leu um arquivoExecutou um comando, leu um arquivoPronto, com a lógica validada nos cinco casos‑teste. O notebook tem cinco etapas: lê o universo + os resumos do COTAHIST tratado → sugere predecessores por continuidade de datas → classifica MANTER/EXCLUIR pela linhagem → grava as três saídas.
+Como ele aplica suas decisões:
+
+Janela 2010–2025 e qualquer RJ exclui já estão embutidos.
+Mini‑mapa de linhagem pré‑preenchido com FICT3←ATOM3 e GOLL54←GOLL4. A FICT3 sai via ATOM3, exatamente como você pediu.
+Penny pelo mínimo anual < R$ 1 em qualquer ano; reporto também o min_preco_unit global por nome na tabela pra você inspecionar.
+
+Três coisas pra saber antes de rodar:
+
+A Seção 2 é sua rede de segurança. Ela varre todos os tickers do COTAHIST e sugere predecessores por encaixe de datas — vai confirmar ATOM3→FICT3 e GOLL4→GOLL54, e provavelmente apontar as renomeações (AXIA, MBRF, MOTV, RIAA…). Os candidatos que foram penny/RJ vêm marcados com ⚠. Revise a lista impressa e adicione ao MAPA_LINHAGEM qualquer ⚠ que apareça antes de confiar no resultado final — é o ponto onde um nome contaminado poderia escapar.
+Nada é mantido silenciosamente. Ticker do universo sem série no COTAHIST vira SEM DADOS (não MANTER), e sai listado pra revisão manual — é também sua checagem de cobertura dos 122.
+Saídas: classificacao_universo.csv (os 122 com decisão, motivo e métricas), tickers_excluidos_integridade.csv (motivo objetivo, pronto pro Cap. 3) e tickers_finais_v2.csv (universo filtrado pra re‑rodar).
+
+O fluxo de uso é: roda → confere a Seção 2 e ajusta o mapa se preciso → roda de novo → revisa os EXCLUÍDOS e os SEM DADOS → aplica o tickers_finais_v2.csv.
+Quando rodar, me manda o bloco "RESUMO DA CLASSIFICAÇÃO" (mantidos/excluídos/sem dados + a lista de excluídos) que a gente confere juntos se os nomes e os motivos fecham antes de você re‑rodar o pipeline.Apendice classificador integridade universoIPYNB Abrir em Bloco de notasVocê disse: === RESUMO DA CLASSIFICAÇÃO ===   MANTER: 93   EXCLUIR: 28   SEM DADOS: 1  --- EXCLUÍDOS ---   AMAR3    | penny: PRECOUNIT < R$1 em AMAR3 [2023, 2024, 2025]   …=== RESUMO DA CLASSIFICAÇÃO ===   MANTER: 93   EXCLUIR: 28   SEM DADOS: 1  --- EXCLUÍDOS ---   AMAR3    | penny: PRECO_UNIT < R$1 em AMAR3 [2023, 2024, 2025]   BEES3    | penny: PRECO_UNIT < R$1 em BEES3 [2012, 2013, 2014, 2015]   ENEV3    | penny: PRECO_UNIT < R$1 em ENEV3 [2014, 2015, 2016]; situacao especial em ENEV3 [2014, 2015, 2016]   ETER3    | penny: PRECO_UNIT < R$1 em ETER3 [2017, 2018]; situacao especial em ETER3 [2018, 2019, 2020, 2021, 2022, 2023, 2024]   FHER3    | situacao especial em FHER3 [2019, 2020, 2021, 2022]   FICT3    | penny: PRECO_UNIT < R$1 em ATOM3 [2015, 2016] (via predecessor); situacao especial em ATOM3 [2015, 2016, 2017] (via predecessor)   GOAU3    | penny: PRECO_UNIT < R$1 em GOAU3 [2016]   GOAU4    | penny: PRECO_UNIT < R$1 em GOAU4 [2016]   GOLL54   | penny: PRECO_UNIT < R$1 em GOLL54 [2025], GOLL4 [2024, 2025] (via predecessor)   HAGA4    | penny: PRECO_UNIT < R$1 em HAGA4 [2015, 2016, 2023]; situacao especial em HAGA4 [2010, 2011, 2012]   HBOR3    | penny: PRECO_UNIT < R$1 em HBOR3 [2018]   INEP4    | penny: PRECO_UNIT < R$1 em INEP4 [2013, 2014, 2015, 2016, 2022, 2023]; situacao especial em INEP4 [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022]   KEPL3    | penny: PRECO_UNIT < R$1 em KEPL3 [2010, 2011, 2012]   LIGT3    | situacao especial em LIGT3 [2023, 2024, 2025]   LOGN3    | penny: PRECO_UNIT < R$1 em LOGN3 [2015, 2016]   PDTC3    | penny: PRECO_UNIT < R$1 em PDTC3 [2025]   PINE4    | penny: PRECO_UNIT < R$1 em PINE4 [2022]   PMAM3    | penny: PRECO_UNIT < R$1 em PMAM3 [2018, 2024, 2025]; situacao especial em PMAM3 [2022, 2023, 2024, 2025]   RPMG3    | penny: PRECO_UNIT < R$1 em RPMG3 [2010, 2011, 2012, 2013, 2014, 2015, 2016]; situacao especial em RPMG3 [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]   RSID3    | penny: PRECO_UNIT < R$1 em RSID3 [2014, 2015, 2016]; situacao especial em RSID3 [2022, 2023, 2024, 2025]   SANB3    | penny: PRECO_UNIT < R$1 em SANB3 [2010, 2011, 2012, 2013, 2014]   SANB4    | penny: PRECO_UNIT < R$1 em SANB4 [2010, 2011, 2012, 2013, 2014]   TCSA3    | penny: PRECO_UNIT < R$1 em TCSA3 [2018, 2020]   TELB4    | penny: PRECO_UNIT < R$1 em TELB4 [2010, 2011, 2015, 2016]   TPIS3    | penny: PRECO_UNIT < R$1 em TPIS3 [2020, 2022, 2023]; situacao especial em TPIS3 [2017, 2018, 2019, 2020]   TUPY3    | penny: PRECO_UNIT < R$1 em TUPY3 [2010]   UNIP6    | penny: PRECO_UNIT < R$1 em UNIP6 [2010, 2011, 2012, 2013, 2014, 2015]   USIM5    | penny: PRECO_UNIT < R$1 em USIM5 [2016]  --- SEM DADOS no COTAHIST (revisar manualmente; possível renomeação) ---   RIAA3  Arquivos gravados em: C:\VSCodeWorkspace\1_TCC_Final\data   - classificacao_universo.csv   - tickers_excluidos_integridade.csv   - tickers_finais_v2.csvMostrar mais6 de jun.Claude respondeu: Pedro, pare antes de aplicar isso.Pedro, pare antes de aplicar isso. Excluir 28 de 122 não é limpar contaminação — é mutilar o universo, e o critério PRECO_UNIT < R$1 está disparando muito além de penny stock. Os falsos positivos aqui derrubam a tese, não a salvam.
+Olha quem está na lista de exclusão:
+
+SANB3/SANB4 (Santander), GOAU3/GOAU4 (Gerdau), USIM5 (Usiminas), TUPY3 (Tupy), KEPL3 (Kepler Weber), UNIP6 (Unipar) — blue chips e mid caps saudáveis. SANB a "R$0,xx" em 2010–2014 e GOAU em 2016 não são penny stocks: são preços nominais baixos legítimos, muitos antes de grupamentos que a empresa fez por organização, não por dificuldade. KEPL3 e UNIP6, aliás, eram justamente os nomes que carregavam peso na sua MaxSharpe — tirá‑los muda seus resultados de forma grosseira.
+
+O que aconteceu: o piso nominal de R$1 não distingue "penny stock de empresa quebrada" de "ação de tostões de empresa boa". Muita companhia sólida negociou abaixo de R$1 nominal em algum ano da década e depois agrupou. O critério, como está, está pescando preço baixo — não risco/iliquidez/distress. É o mesmo erro de fundo da Etapa VI, só que invertido: lá o artefato de ajuste inflava; aqui o preço nominal baixo engana.
+Repara que o FLAG_SITUACAO (situação especial), esse sim, está certeiro — ENEV, ETER, FHER, INEP, RPMG, RSID, PMAM, TPIS, LIGT, FICT(via ATOM), GOLL(via GOLL4). Esses são distress de verdade, com o carimbo oficial da B3. O problema é só a perna do preço.
+Então temos um aprendizado real: o piso nominal de R$1 sozinho é um critério ruim. Três caminhos pra consertar, em ordem do que eu recomendo:
+
+Penny só conta junto com baixa liquidez (o jeito certo). O que define penny stock perigosa não é o preço — é preço baixo e iliquidez/microcap. Adiciono o ADTV: exclui por preço apenas se o PRECO_UNIT < R$1 e o volume médio diário daquele período estiver abaixo de um corte (ex.: R$1 mi/dia). SANB, GOAU, USIM têm liquidez altíssima → ficam. GOLL54‑2025, FICT/ATOM, microcaps de tostão → saem. Isso separa exatamente o que você quer.
+Penny exige predominância, não um toque. Trocar "mínimo anual < R$1" por "mediana anual < R$1" (a ação negociou predominantemente abaixo de R$1 no ano). Mata os falsos positivos de quem só encostou em R$1, mas ainda pega preço baixo de empresa boa que ficou anos assim — menos preciso que o (1).
+Largar o preço e usar só FLAG_SITUACAO. Exclui só os ~11 com situação especial oficial. Defensável e simples, mas deixa passar a GOLL54‑2025, que não tem flag (Chapter 11 lá fora) — perde o caso que mais te incomodava.
+
+A minha recomendação é a (1): é o critério economicamente correto ("penny stock de risco" = preço baixo + iliquidez), responde à banca, e provavelmente reduz a lista de 28 para algo perto de 10–12 nomes que de fato deveriam sair. O VOLTOT já está no COTAHIST tratado, então não preciso de dado novo — só adicionar a perna de liquidez.
+Sobre o RIAA3 (SEM DADOS): é uma renomeação recente. A Seção 2 não te sugeriu um predecessor pra ele? Se sugeriu, me diz qual que eu mapeio; senão, eu trato como caso manual.
+Antes de eu reescrever o classificador com a perna de liquidez, preciso de uma decisão e um número:
+
+Confirma o caminho (1) (preço E liquidez), ou prefere (2) ou (3)?
+Se (1): qual corte de ADTV te parece defensável pra "ilíquida demais"? Sugiro R$ 1 milhão/dia de volume financeiro médio (no ano em que o preço esteve sub‑R$1), mas posso usar R$ 500 mil (mais permissivo) ou um percentil do universo.
+
+Me responde os dois (ou "usa o default sensato"), e — como sempre — executar agora ou gerar como .ipynb?Você disse: Candidatos a predecessor (revise antes de confiar):    ABEV3  <-  AMBV3  (gap 3d; AMBV3 até 2013-11-08)   ABEV3  <-  AMBV4  (gap 3d; AMBV4 até 2013-11-08)   AB…Candidatos a predecessor (revise antes de confiar):    ABEV3  <-  AMBV3  (gap 3d; AMBV3 até 2013-11-08)   ABEV3  <-  AMBV4  (gap 3d; AMBV4 até 2013-11-08)   ABEV3  <-  VINE3  (gap 7d; VINE3 até 2013-11-04)   AMAR3  <-  MARI3  (gap 3d; MARI3 até 2010-06-25)   AXIA3  <-  CPLE6  (gap 3d; CPLE6 até 2025-11-07)   AXIA3  <-  ELET3  (gap 3d; ELET3 até 2025-11-07)   AXIA3  <-  ELET6  (gap 3d; ELET6 até 2025-11-07)   AXIA3  <-  EQPA6  (gap 5d; EQPA6 até 2025-11-05)   AXIA3  <-  USIM6  (gap 3d; USIM6 até 2025-11-07)   AXIA6  <-  CPLE6  (gap 3d; CPLE6 até 2025-11-07)   AXIA6  <-  ELET3  (gap 3d; ELET3 até 2025-11-07)   AXIA6  <-  ELET6  (gap 3d; ELET6 até 2025-11-07)   AXIA6  <-  EQPA6  (gap 5d; EQPA6 até 2025-11-05)   AXIA6  <-  USIM6  (gap 3d; USIM6 até 2025-11-07)   B3SA3  <-  BVMF3  (gap 3d; BVMF3 até 2018-03-23)   CLSC4  <-  CLSC6  (gap 1d; CLSC6 até 2012-01-19)   CLSC4  <-  UOLL4  (gap 2d; UOLL4 até 2012-01-18)   CSUD3  <-  CARD3  (gap 1d; CARD3 até 2022-09-14)   CSUD3  <-  SHUL3  (gap 3d; SHUL3 até 2022-09-12)   DXCO3  <-  DTEX3  (gap 1d; DTEX3 até 2021-08-18)   DXCO3  <-  VVAR3  (gap 6d; VVAR3 até 2021-08-13)   EGIE3  <-  TBLE3  (gap 1d; TBLE3 até 2016-07-20)   EMBJ3  <-  EMBR3  (gap 3d; EMBR3 até 2025-10-31)   ENEV3  <-  MPXE3  (gap 1d; MPXE3 até 2013-10-21)   FICT3  <-  ATOM3  (gap 1d; ATOM3 até 2024-12-18) ⚠ (foi penny/RJ) [já no mapa]   GOLL54  <-  GOLL4  (gap 1d; GOLL4 até 2025-06-11) ⚠ (foi penny/RJ) [já no mapa]   GOLL54  <-  JBSS3  (gap 6d; JBSS3 até 2025-06-06)   ISAE4  <-  TRPL3  (gap 4d; TRPL3 até 2024-11-14)   ISAE4  <-  TRPL4  (gap 4d; TRPL4 até 2024-11-14)   LAND3  <-  TESA3  (gap 3d; TESA3 até 2021-07-30)   MBRF3  <-  BRFS3  (gap 1d; BRFS3 até 2025-09-22)   MBRF3  <-  EQPA7  (gap 6d; EQPA7 até 2025-09-17)   MBRF3  <-  MRFG3  (gap 1d; MRFG3 até 2025-09-22)   MOTV3  <-  CCRO3  (gap 2d; CCRO3 até 2025-04-30)   PDTC3  <-  IDNT3  (gap 3d; IDNT3 até 2020-07-10) ⚠ (foi penny/RJ)   RADL3  <-  DROG3  (gap 3d; DROG3 até 2011-12-16)   RADL3  <-  RAIA3  (gap 3d; RAIA3 até 2011-12-16)   TASA4  <-  FJTA3  (gap 1d; FJTA3 até 2019-11-11) ⚠ (foi penny/RJ)   TASA4  <-  FJTA4  (gap 1d; FJTA4 até 2019-11-11) ⚠ (foi penny/RJ)   TIMS3  <-  TIMP3  (gap 4d; TIMP3 até 2020-10-09)   VIVT3  <-  TLPP3  (gap 1d; TLPP3 até 2011-10-05)   VIVT3  <-  TLPP4  (gap 1d; TLPP4 até 2011-10-05)   VLID3  <-  ABNB3  (gap 1d; ABNB3 até 2010-11-09)   VSTE3  <-  LLIS3  (gap 1d; LLIS3 até 2023-02-08) ⚠ (foi penny/RJ)   VSTE3  <-  WIZS3  (gap 1d; WIZS3 até 2023-02-08)   YDUQ3  <-  ESTC3  (gap 1d; ESTC3 até 2019-07-22)   YDUQ3  <-  TRPN3  (gap 6d; TRPN3 até 2019-07-17) ⚠ (foi penny/RJ)Mostrar mais6 de jun.Claude respondeu: Esse output é exatamente por que a Seção 2 é "revise antes de confiar" — ele tem ouro e tem armadilha.Triaged lineage candidates, identified critical trap, surfaced systemic over-exclusionTriaged lineage candidates, identified critical trap, surfaced systemic over-exclusionEsse output é exatamente por que a Seção 2 é "revise antes de confiar" — ele tem ouro e tem armadilha. Deixa eu te dar o princípio que simplifica tudo e depois o que realmente importa.
+Princípio: o mapa de linhagem só muda uma decisão quando o predecessor foi penny/RJ (os ⚠). Todas as renomeações de empresa saudável — ABEV3←AMBV (Ambev), B3SA3←BVMF (B3), EGIE3←TBLE (Engie), DXCO3←DTEX (Dexco), VIVT3←TLPP (Vivo), TIMS3←TIMP (TIM), RADL3←RAIA/DROG (Raia Drogasil), MBRF3←MRFG/BRFS (Marfrig+BRF) — são cosméticas: mapear ou não, o nome continua MANTER. Não gaste tempo com elas. Foca só nos ⚠.
+A armadilha — YDUQ3. A detecção ofereceu dois predecessores: ESTC3 (gap 1 dia) e TRPN3 ⚠ (gap 6 dias). O verdadeiro é ESTC3 (Estácio→Yduqs, saudável); o TRPN3 é uma deslistagem coincidente que por acaso foi penny/RJ. Se você mapear o ⚠, mata a Yduqs por engano. Regra de bolso: o predecessor real é quase sempre o de menor gap (1 dia); desconfie de ⚠ com gap grande.
+Os ⚠ que de fato importam:
+
+FICT3←ATOM3 e GOLL54←GOLL4 — reais, já no mapa, exclusão correta. ✓
+VSTE3←LLIS3 (Restoque→Veste, gap 1d) — real e distressed. Exclui com razão.
+TASA4←FJTA4 (Forjas Taurus→Taurus, gap 1d) — real, mas a Taurus se recuperou. Mapear isso exclui a TASA4 inteira por causa da RJ do predecessor. Julgamento seu.
+PDTC3←IDNT3 (provável Ideiasnet→Padtec) — a PDTC3 já sai sozinha; só reforça.
+
+Mapa consolidado que eu usaria (sem o TRPN3):
+pythonMAPA_LINHAGEM = {
+    "FICT3":["ATOM3"], "GOLL54":["GOLL4"],
+    "VSTE3":["LLIS3"], "PDTC3":["IDNT3"],
+    # "TASA4":["FJTA4"],  # << decisão sua: empresa recuperada
+}
+AXIA3/AXIA6 e EMBJ3 precisam que você me diga que empresa são (os candidatos agrupados em 2025-11-07 são ruído de detecção, nenhum ⚠ — então não afetam exclusão). RIAA3 continua sem dado e sem predecessor sugerido — também preciso saber o que é.
+O que isso revela sobre a regra inteira
+Juntando com o problema dos falsos positivos de preço da rodada anterior, fica claro que as duas pernas da regra estão exagerando:
+
+Preço: pega Santander, Gerdau, Usiminas, Kepler, Unipar (preço nominal baixo ≠ penny).
+Qualquer RJ: mata empresas que se recuperaram — ENEV3 (Eneva, RJ 2014–16, hoje gigante de energia), LIGT3 (Light, reestruturada em 2023), e TASA4 via linhagem. Excluir a Eneva inteira por causa de 2014–16 descarta os anos saudáveis 2018–2025 — é o mesmo viés de sobrevivência ao contrário.
+
+Não vou reabrir a arquitetura (você decidiu exclusão estática, e está certo pro prazo) — mas preciso ser honesto: quanto mais a gente afina a regra estática pra não pegar nome bom, mais ela vira a máscara point-in-time que evitamos. Existe um limite irredutível aí. A boa notícia é que dá pra chegar num ponto defensável com dois ajustes:
+
+Penny = preço E iliquidez (o VOLTOT já está no COTAHIST): só exclui por preço se PRECO_UNIT < R$1 e ADTV baixo. Remove Santander/Gerdau/Usiminas etc. de uma vez.
+RJ = decisão sua: ou (a) "qualquer RJ exclui" (simples, mas perde Eneva/Light), ou (b) "RJ só exclui se persistiu nos últimos N anos / parte material do OOS" (preserva recuperadas).
+
+Preciso de três respostas pra reconstruir o classificador v2:
+
+Confirma a perna de liquidez no critério de preço? Qual corte de ADTV — R$ 1 mi/dia, R$ 500 mil, ou percentil?
+RJ: qualquer RJ exclui, ou só RJ recente/persistente (preserva recuperadas)?
+TASA4 entra no mapa (exclui) ou fica de fora (mantém)? E me diz o que são AXIA3/AXIA6, EMBJ3 e RIAA3.
+
+Com isso eu refaço o classificador — e, de novo: executar agora ou gerar .ipynb?Você disse: Qual corte de ADTV — percentil.Qual corte de ADTV — percentil. preserva recuperadas.  TASA4 mantém. AXIA3/AXIA6 antiga eletrobras. RIAA3 é o código de negociação (ticker) das ações ordinárias da Riachuelo na bolsa de valores brasileira, a B3. O código substituiu o antigo GUAR3. EMBJ3 e a embraer6 de jun.Claude respondeu: Esse output mostra exatamente onde a regra simples quebra — e por que.Reconciliou critérios conflitantes e refinhou regra de exclusão com identidade corporativaReconciliou critérios conflitantes e refinhou regra de exclusão com identidade corporativaEsse output mostra exatamente onde a regra simples quebra — e por que. Dois problemas e uma reconciliação que resolve os dois.
+Os ruídos do mapa (rápido)
+Princípio: linhagem só muda decisão quando o predecessor foi penny/RJ (os ⚠). As renomeações saudáveis que você confirmou — AXIA←ELET (Eletrobras), EMBJ←EMBR (Embraer), RIAA←GUAR (Riachuelo/Guararapes) — mapeio só para cobertura (a RIAA3 sai do "SEM DADOS"), e elas ficam MANTER. TASA4 não entra no mapa, como você decidiu. Os reais a excluir por linhagem: FICT3←ATOM3, GOLL54←GOLL4, e os dois ⚠ de gap 1 dia VSTE3←LLIS3 (Restoque) e PDTC3←IDNT3.
+O problema de fundo, e a reconciliação
+Sua escolha "preserva recuperadas" entra em conflito aparente com "excluir FICT3 via ATOM3": a ATOM3 também é um caso antigo (RJ 2015–17) que "se recuperou" virando Fictor. Por que excluir a FICT3 mas manter a ENEV3 (Eneva, RJ 2014–16, hoje gigante de energia)?
+A resposta está num conceito que os próprios dados já nos deram: continuidade de identidade. A Eneva se recuperou sob o mesmo ticker e mesmo ISIN — é a mesma empresa. A Fictor e a Gol tiveram ISIN e ticker trocados (BRATOMACNOR1→BRFICTACNOR3; BRGOLLACNPR4→BRGOLLA01PR5) — a equity antiga foi essencialmente zerada e reemitida. São coisas economicamente diferentes. Então:
+
+Identidade contínua (recuperou sob o mesmo código): problema antigo não conta → preserva recuperadas (ENEV, KEPL, SANB, UNIP…).
+Identidade rompida (reorganização, ISIN/ticker novo — os que você mapeou): exclui, porque a continuidade quebrou.
+
+Isso reconcilia suas duas decisões sem contradição, e a justificativa para a banca é limpa e objetiva.
+E os falsos positivos de preço
+Dois ajustes matam quase todos:
+
+Mínimo anual → mediana anual. GOAU3/4, USIM5, TUPY3, HBOR3 foram flagados porque o mínimo do ano encostou em R$ 1 num único pregão. Pela mediana ("negociou predominantemente abaixo de R$ 1"), eles nem são penny — somem da lista.
+Preço só exclui junto com baixa liquidez (seu critério de percentil). SANB3/4, UNIP6, KEPL3, BEES3 negociaram anos abaixo de R$ 1 nominal, mas com liquidez alta → ficam. Microcaps de tostão ilíquidas → saem.
+
+E aqui a sutileza que eu tenho que te avisar sobre a Gol: ela foi uma penny líquida em 2025 (negociou R$ 1–13 mi/dia no frenesi). Liquidez sozinha poderia não pegá-la. Mas como ela está em REORG_TICKERS (identidade rompida), é excluída por linhagem de qualquer jeito — o piso de preço e a liquidez são só corroboração no motivo. Resolvido pela porta certa.
+Resultado esperado: a lista cai de 28 para algo perto de 13 — os reorganizados (FICT3, GOLL54, VSTE3, PDTC3), os em RJ recente (LIGT, RPMG, RSID, PMAM, ETER) e as microcaps penny+ilíquidas recentes (AMAR3, INEP4, HAGA4, TPIS3) — preservando todas as blue chips.
+Deixa eu validar essa lógica nova antes de empacotar:Validou lógica de classificação e estruturou notebook com diagnósticosValidou lógica de classificação e estruturou notebook com diagnósticosTodos os 10 casos passaram. A lógica reconcilia tudo: blue chips com penny antigo ficam, recuperadas sob mesma identidade ficam, RJ recente sai, penny recente ilíquida sai, artefato de mínimo (GOAU) deixa de ser penny pela mediana, e os reorganizados saem por identidade rompida. Vou empacotar o v2.Executou um comando, leu um arquivoExecutou um comando, leu um arquivoPronto, lógica validada nos 10 casos. O v2 implementa exatamente o que combinamos:
+
+Penny = mediana anual < R$ 1 e baixa liquidez (percentil do universo, default p20). Mata Santander, Gerdau, Usiminas, Kepler, Unipar de uma vez.
+Identidade rompida (REORG_TICKERS = FICT3, GOLL54, VSTE3, PDTC3) → exclui por reorganização; preço/RJ entram como corroboração no motivo. Garante a Gol fora, sem depender da liquidez.
+Recuperadas sob mesma identidade (Eneva etc.) → preservadas, porque a regra de penny/RJ só olha os anos recentes (2023–2025) para esses.
+RJ recente → exclui (Light, RPMG, RSID, PMAM, Eternit); RJ antiga superada → mantém.
+Renomeações saudáveis (AXIA←ELET, EMBJ←EMBR, RIAA←GUAR) mapeadas só para cobertura — a RIAA3 sai do "SEM DADOS".
+
+Três coisas no fluxo de uso:
+
+A Seção 4 tem um diagnóstico de fronteira — uma tabela com cada nome que teve penny ou RJ, mostrando adtv_global, anos e a decisão. É o que te deixa calibrar o PERCENTIL_ADTV: você vê a liquidez real de cada caso e onde a separação cai. Se algum nome ficar do lado errado, é mudar um número.
+Revise a Seção 2 de novo. Se aparecer algum ⚠ de gap 1 dia que não está em REORG_TICKERS, é um candidato a reorganização que eu não mapeei — você decide se entra. (Lembrando da regra: gap 1d é o predecessor real; ⚠ de gap grande costuma ser ruído.)
+TASA4 ficou de fora do REORG_TICKERS, como você pediu — ela é mantida.
+
+Quando rodar, me manda de novo o RESUMO + a tabela de DIAGNÓSTICO da Seção 4. Com a lista perto de ~13 e o diagnóstico de liquidez à vista, a gente confere nome por nome se a fronteira está no lugar certo antes de você fixar o tickers_finais_v2.csv e re-rodar o pipeline uma única vez.
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Rodou limpo, e o resultado é exatamente o que a gente buscava: 122 → 113 mantidos, 9 excluídos, zero SEM DADOS (a RIAA3 pegou dado via GUAR3). As blue chips foram todas resgatadas — SANB3/4, UNIP6, KEPL3, TUPY3, USIM, GOAU, TELB4, BEES3 ficaram, e o GOLL54 saiu por identidade rompida sem depender da liquidez (a corroboração só mostra penny 2025). O corte de liquidez ficou em R$ 682 mil/dia (p20).
+Os 9 são todos defensáveis e se dividem limpo:
+
+Reorganização (identidade rompida): FICT3, GOLL54, VSTE3, PDTC3.
+Situação especial recente (RJ): LIGT3, PMAM3, RPMG3, RSID3, ETER3.
+
+Agora eu preciso te apontar três casos de fronteira — porque eles ficam no limite da regra e a decisão deve ser sua, não silenciosa minha:
+1. ETER3 — possível exclusão indevida. A Eternit saiu da RJ em 2024 e não tem flag em 2025 (anos_situacao vai até 2024). A regra a excluiu porque 2023–2024 caem na janela recente, mas o espírito de "preserva recuperadas" sugeriria mantê-la, já que ela está fora de situação especial hoje. É o único caso onde a regra pode estar sendo dura demais. Sua chamada.
+2. Ilíquidas antigas que escaparam. HAGA4 (R$ 23 mil/dia!), INEP4 (R$ 143 mil), FHER3 (R$ 411 mil), TPIS3 — foram mantidas porque o problema (RJ/penny) terminou antes de 2023, logo "antigo" pela regra. Mas algumas são quase intransacionáveis hoje. Aqui um esclarecimento importante: isso é uma questão de liquidez, não de integridade — elas passaram no seu filtro de presença (Etapa IV), que mede ter pregão, não volume. Se quiser barrá-las, é uma decisão separada (piso de liquidez absoluto), não desta classificação. Eu não recomendo reabrir isso agora; só quero que você saiba que estão lá.
+3. A alavanca é o corte de 2023. ETER3, INEP4, FHER3, TPIS3 mudam de lado conforme você define "recente". Se quiser que "recente" signifique em situação especial em 2025 (e não 2023–2025), ETER3 fica e o resultado vira 8 exclusões.
+Minha leitura honesta: dá para fechar nos 9. O que de fato contaminava — GOLL54 e FICT3 — está resolvido, e os outros 7 são distress real e recente. As fronteiras (ETER3 dentro ou fora; os ilíquidos antigos) são ajustes finos de julgamento, não erros. Eu provavelmente reconsideraria só a ETER3 (recuperada) e deixaria o resto como está.
+Você quer:
+
+Aceitar os 9 como estão e fixar o tickers_finais_v2.csv (113 ativos) para re-rodar; ou
+Ajustar a fronteira — tirar a ETER3 da exclusão (vira 8), e/ou mudar a janela recente para "só 2025"?
+
+Decidido isso, é fixar o universo e re-rodar o pipeline uma única vez. E quando você travar a lista, eu atualizo o resumo executivo .md com o número final e a regra exata, pronto para o Capítulo 3.Você disse: claude, primeiro, como adicionar esse filtro dentro do meu pipeline?claude, primeiro, como adicionar esse filtro dentro do meu pipeline? pq ai e so uma execucao de diferenca. Outra coisa, esse filtro de presenca nao pode entrar no meu pipeline como percentil? eu ja gravo o volume nos meus dados la no inicio do pipeline?6 de jun.Claude respondeu: Duas perguntas boas, e a segunda tem uma armadilha que preciso sinalizar.Arquitetou integração do filtro e ponderou trade-offs de escopoArquitetou integração do filtro e ponderou trade-offs de escopoDuas perguntas boas, e a segunda tem uma armadilha que preciso sinalizar. Vou separar.
+1. Como integrar o filtro de integridade ao pipeline
+A forma certa não é embutir o classificador inteiro no pipeline pra recalcular toda vez — é congelar a lista revisada e aplicá-la como mais uma etapa. E isso não é só comodidade: é metodologicamente melhor. Você acabou de revisar à mão casos de fronteira (ETER3, os ilíquidos antigos). Se o pipeline recalcular a exclusão a cada run, essas decisões podem mudar sozinhas quando os dados ou um parâmetro mudarem — e um universo de TCC tem que ser fixo, documentado e reprodutível, não dependente de recomputação silenciosa. O classificador é um passo de preparação de dados (como o tratamento do COTAHIST), não um passo do pipeline de resultados.
+Então o classificador roda uma vez, gera o tickers_excluidos_integridade.csv, e o pipeline só aplica essa lista — o seu "uma execução de diferença". O bloco entra na etapa de construção do universo, logo depois das suas Etapas IV/V/VI e antes de qualquer coisa consumir o universo (matriz de preços, covariância, backtest):
+python# === Etapa VII — Exclusão por integridade (lista revisada e congelada) ===
+import pandas as pd
+excl = (pd.read_csv(PASTA_DATA / "tickers_excluidos_integridade.csv")["ticker"]
+          .astype(str).str.strip().tolist())
+antes = len(universo)
+universo = [t for t in universo if t not in excl]   # 'universo' = sua lista final de tickers
+print(f"Etapa VII (integridade): -{antes - len(universo)} -> {len(universo)} ativos")
+Onde universo é o objeto com sua lista final. Adapta o nome da variável e o caminho, re-roda o pipeline uma vez, e pronto. Se quiser, me sobe o notebook de construção do universo que eu encaixo o bloco no ponto exato, com os seus nomes de variável.
+2. Trocar a presença por percentil de liquidez — sim, mas cuidado
+Tecnicamente, sim, e sem dado novo: você já grava o volume no início, e o volume financeiro (R$) é invariante a ajuste (preço↓ × quantidade↑ se cancelam num split), então serve direto como ADTV.
+Mas três ressalvas, em ordem de importância:
+A — viés de sobrevivência (a armadilha). O percentil tem que ser calculado ex-ante, na janela de formação (2010) — nunca no período inteiro nem no atual. Se você ranquear por ADTV do período todo, mantém papéis porque ficaram líquidos depois, o que é seleção pelo futuro. Você já faz exatamente isso certo hoje (ADTV na formação de 2010); o percentil tem que herdar essa regra:
+pythonadtv_form = volume_financeiro.loc["2010"].mean()   # ADTV por ticker SÓ na formação
+corte     = adtv_form.quantile(0.20)               # ou piso absoluto: corte = 1_000_000
+liquidos  = adtv_form[adtv_form >= corte].index
+B — presença e liquidez medem coisas diferentes. Presença ≥95% = tem pregão (continuidade da série, requisito de estimação da covariância). ADTV = quanto negocia (capacidade, requisito de investabilidade). A HAGA4 a R$ 23 mil/dia tem presença alta e volume ínfimo. Então eu adicionaria o filtro de liquidez ao lado da presença, não no lugar — você precisa dos dois: série completa o bastante pra estimar, e volume o bastante pra ser investável.
+C — escopo (a honesta). Mexer na Etapa IV redefine o universo inteiro — N pode sair de 122 pra outro número, entram/saem vários nomes, e isso reabre seus resultados já fechados. É bem maior que a exclusão de integridade (que tira 9 nomes revisados, contido). Se o seu objetivo real é só remover os ultra-ilíquidos tipo HAGA4 que escaparam, o caminho leve é dobrar um piso de ADTV dentro da própria Etapa VII de integridade (alvo cirúrgico, mesmo CSV congelado), em vez de reformar a Etapa IV. Perto do deadline, eu faria o cirúrgico.
+Percentil vs piso absoluto, de passagem: percentil sempre corta os X% de baixo (relativo, pode tirar nome investável se o universo já é líquido); piso absoluto (ex.: R$ 1 mi/dia) é economicamente interpretável ("capacidade mínima"). Pra liquidez eu tendo ao piso absoluto, mas qualquer um defende.
+Quer que eu já te mostre como adicionar a perna de ADTV à Etapa VII (o caminho cirúrgico do item C), reaproveitando o volume que você grava no início?Você disse: Aceitar os 9 como estão e fixar o tickersfinaisv2.Aceitar os 9 como estão e fixar o tickers_finais_v2.csv (113 ativos) para re-rodar;6 de jun.Claude respondeu: Fechado — universo travado em 113 ativos, os 9 excluídos aceitos como estão (incluindo a ETER3, que registro como caso de fronteira revisado e mantido na exclu…Consolidou decisão final, atualizará documentação executiva com númerosConsolidou decisão final, atualizará documentação executiva com númerosFechado — universo travado em 113 ativos, os 9 excluídos aceitos como estão (incluindo a ETER3, que registro como caso de fronteira revisado e mantido na exclusão por decisão consciente). Atualizei o resumo executivo com o número final, a regra exata e o passo de integração, pronto para o Capítulo 3:Criou um arquivo, leu um arquivoCriou um arquivo, leu um arquivoO documento traz o número final (113), a regra exata em três critérios, os 9 nomes com motivo, o princípio de continuidade de identidade e o bloco da Etapa VII — tudo pronto pra virar texto do Capítulo 3.
+Seu próximo passo concreto é só: colar a Etapa VII na construção do universo, apontando pro tickers_excluidos_integridade.csv, e re-rodar uma vez com os 113. Se quiser, me sobe o notebook/script de construção do universo que eu encaixo o bloco no ponto exato com os seus nomes de variável — assim você não corre risco de aplicar a exclusão tarde demais (depois de algo já ter consumido o universo).
+Um lembrete pra fechar o raciocínio com honestidade: ao escrever o Capítulo 3, vale registrar as duas limitações que documentamos — o viés de sobrevivência embutido na Etapa VI e os poucos nomes de baixíssima liquidez (HAGA4 e companhia) que permaneceram por terem problema antigo. Declarar isso é o que torna a construção do universo defensável numa banca atenta; é a diferença entre "limpamos os dados" e "sabemos exatamente o que cada filtro faz e o que ele deixa passar".
+Quando re-rodar, se algum resultado-título se mexer (não deve mexer muito — saíram 9 de 122), me manda que a gente confere se a narrativa central segura.Resumo executivo integridade dados finalDocumento · MD Abrir em Google ChromeVocê disse: claude, me instrua a executar, nao entendi como alinhar ao meu codigoclaude, me instrua a executar, nao entendi como alinhar ao meu codigo6 de jun.Claude respondeu: Sem problema — pra eu te instruir com precisão e não chutar nomes de variável, preciso ver onde seu universo é montado.Sem problema — pra eu te instruir com precisão e não chutar nomes de variável, preciso ver onde seu universo é montado. Mas já te dou o roteiro completo, e ele se resolve mesmo sem eu ver o código.
+A ideia em uma frase
+Você tem um arquivo (tickers_excluidos_integridade.csv) com 9 tickers. Em algum ponto do seu pipeline existe uma lista (ou índice) com os tickers do universo — hoje os 122. Você só precisa remover esses 9 dessa lista, no lugar certo, e deixar o resto do pipeline rodar.
+Passo 1 — Achar onde o universo é definido
+Procure no seu código o ponto que produz a lista final de tickers das Etapas IV/V/VI. Sinais pra procurar (Ctrl+Shift+F no VSCode):
+
+tickers_finais , Etapa VI, Etapa V, motivo, presenca
+ou onde você lê/escreve tickers_finais.csv
+ou o nome da variável que carrega os 122 (pode ser uma lista, um Index do pandas, ou as colunas da matriz de preços)
+
+Quando achar, me diz (a) o nome da variável e (b) o tipo dela. Os três casos comuns:
+
+Lista de strings: universo = ['PETR4', 'VALE3', ...]
+Índice/Series do pandas: universo = df_filtrado.index (ou uma coluna ['ticker'])
+Colunas de uma matriz de preços: matriz_precos[['PETR4','VALE3', ...]]
+
+Passo 2 — Inserir o bloco logo APÓS esse ponto
+O ponto é crítico: depois de o universo ficar pronto e antes de qualquer coisa usá-lo (matriz de preços, retornos, covariância, backtest). Conforme o tipo da sua variável:
+Caso 1 — lista:
+pythonimport pandas as pd
+PASTA_DATA = r"C:\VSCodeWorkspace\1_TCC_Final\data"   # ajuste se preciso
+excl = pd.read_csv(rf"{PASTA_DATA}\tickers_excluidos_integridade.csv")["ticker"].astype(str).str.strip().tolist()
+
+antes = len(universo)
+universo = [t for t in universo if t not in excl]
+print(f"Etapa VII (integridade): {antes} -> {len(universo)} ativos (removidos {antes-len(universo)})")
+Caso 2 — Index/Series do pandas:
+pythonantes = len(universo)
+universo = universo[~universo.isin(excl)]
+print(f"Etapa VII (integridade): {antes} -> {len(universo)} ativos")
+Caso 3 — filtrar as colunas da matriz de preços:
+pythonmanter = [c for c in matriz_precos.columns if c not in excl]
+matriz_precos = matriz_precos[manter]
+print(f"Etapa VII (integridade): matriz agora com {matriz_precos.shape[1]} ativos")
+Passo 3 — Conferir antes de rodar tudo
+Rode só até esse bloco e confira o print: tem que dizer 122 → 113 (ou bater com o tamanho que você espera). E uma verificação rápida de que os 9 sumiram:
+pythonassert all(t not in universo for t in excl), "Algum excluído ainda está no universo!"
+print("OK: os 9 foram removidos.")
+(No Caso 3, troque universo por matriz_precos.columns.)
+Passo 4 — Re-rodar o pipeline inteiro, uma vez
+Com o bloco no lugar, execute o pipeline do começo ao fim normalmente. Tudo a jusante (covariância, otimização, backtest) vai consumir os 113 automaticamente, porque todos partem dessa mesma variável de universo.
+
+Onde a maioria das pessoas erra: colocar o bloco tarde demais — depois de a matriz de covariância ou os retornos já terem sido montados com os 122. Por isso ele tem que vir imediatamente após a definição do universo.
+O jeito mais seguro e sem chute é você me subir o notebook (ou o .py) onde o universo é construído. Eu te devolvo com a Etapa VII encaixada na linha exata, usando os seus nomes de variável, e com o assert de conferência já posto. Quer fazer assim?Você disse: claude, eu acabei de executar todos os scripts novamente, faca um prompt pada o claude-code rodar e devolver um relatorio para voce mapear todo processamento a…claude, eu acabei de executar todos os scripts novamente, faca um prompt pada o claude-code rodar e devolver um relatorio para voce mapear todo processamento atualizado6 de jun.Claude respondeu: Boa ideia — um relatório do Claude Code mapeando o estado pós‑re‑execução me dá a base factual pra eu te acompanhar sem adivinhar.Architected comprehensive read-only audit prompt for Claude Code pipeline inspectionArchitected comprehensive read-only audit prompt for Claude Code pipeline inspectionBoa ideia — um relatório do Claude Code mapeando o estado pós‑re‑execução me dá a base factual pra eu te acompanhar sem adivinhar. Montei o prompt como read‑only / sem execução (você acabou de rodar; o Claude Code só lê as saídas que já estão lá), com playbook concreto, log de evidências e foco em confirmar que os 113 ativos se propagaram por todo o pipeline.Criou um arquivo, leu um arquivoCriou um arquivo, leu um arquivoPronto. O prompt está desenhado pra fazer o Claude Code te entregar um RELATORIO_ESTADO_PIPELINE.md na raiz do projeto.
+Pontos que embuti de propósito, pensando no seu caso:
+
+Read‑only e sem execução. Como você acabou de rodar, ele só lê as saídas já gravadas — não re‑executa nada e não toca em nenhum arquivo (só cria o relatório). Se ele achar que precisaria executar pra verificar algo, é instruído a parar e listar, não rodar.
+A verificação central é o funil do universo. Ele tem que confirmar 122 → 113 e rastrear a contagem de ativos em cada estágio a jusante (preços → retornos → covariância → pesos → backtest → econometria), além de checar que os 9 nomes sumiram de verdade. É aqui que erros de "re‑rodei, mas um estágio ficou velho" aparecem.
+Detecção de obsolescência. Ele procura saídas que ainda mostrem 122, execution_count fora de ordem, ou arquivos de dados mais antigos que os de montante — pra flagrar se algum notebook não foi re‑executado depois da mudança.
+Log de evidências. Toda afirmação vem com arquivo : célula/linha, e o que não der pra confirmar vai pra seção "NÃO VERIFICADO" — sem invenção.
+
+Como usar: abra o Claude Code na pasta 1_TCC_Final, cole o conteúdo do arquivo como instrução, deixe ele gerar o RELATORIO_ESTADO_PIPELINE.md, e me suba esse relatório aqui. Com ele eu remapeio todo o processamento atualizado e a gente confere, em especial, se a redução pra 113 propagou limpo e se algum resultado‑título se mexeu.
+Um ajuste que talvez você queira fazer antes de rodar: confirma se o nome tickers_excluidos_integridade.csv e os caminhos batem com onde você de fato gravou — se mudou algo, é só editar no topo do prompt.Prompt claudecode mapa pipelineDocumento · MD Abrir em Google ChromeVocê disse: claude, analise o relatorio geradoRELATORIO_ESTADO_PIPELINE.mdmdclaude, analise o relatorio gerado6 de jun.Claude respondeu: Relatório denso e bem feito.Mapeando processamento atualizado e sinalizando pontos críticosMapeando processamento atualizado e sinalizando pontos críticosRelatório denso e bem feito. Deixa eu ler o trecho que ficou truncado (seções D–G) antes de analisar.Identificou falhas críticas no pipeline e inconsistências nos resultadosIdentificou falhas críticas no pipeline e inconsistências nos resultadosLi o relatório inteiro. Primeiro o veredito geral: o Claude Code fez um trabalho sólido e honesto — o pipeline está executado de ponta a ponta, 9 estágios + apêndices, e ele inclusive sinalizou as próprias incertezas. A boa notícia: os 9 nomes de integridade (FICT3, GOLL54, etc.) sumiram de fato de todos os estágios a jusante.
+Mas o relatório, lido com atenção, revela uma coisa séria que precisa de ação antes de você confiar em qualquer resultado — e ela está meio escondida entre os achados de severidade média/baixa. Vou em ordem de importância, não na ordem do relatório.
+🔴 1. O universo mudou debaixo da lista de integridade — nomes distressed voltaram sem triagem
+Repare no funil real (Seção C): 496 → 135 (presença) → 131 (IPO) → 118 (ADTV p10) → 109 (integridade). Não existe mais o filtro "Etapa VI / preço máx ajustado > R$ 1.000" que antes tirava AMER3, OIBR3, LUPA3, VIVR3, PDGR3, etc. Você o substituiu por um filtro de ADTV — o que é exatamente a correção que eu tinha sugerido (o filtro de preço-máximo era enviesado). O problema é a consequência não intencional:
+
+Esses nomes eram blue chips/empresas líquidas → passam no filtro de ADTV → voltaram para o universo (118).
+A lista tickers_excluidos_integridade.csv foi gerada pelo classificador lendo a tickers_finais.csv antiga de 122, que não continha AMER3/OIBR3/etc. Logo, esses nomes nunca passaram pela triagem de integridade.
+Resultado: AMER3, OIBR3, LUPA3, VIVR3 provavelmente estão nos 109 finais, sem terem sido avaliados pela regra de penny/RJ.
+
+A evidência está no próprio relatório, nos achados que ele classificou como "menores": G6 cita VIVR3 no log de winsorização (que opera sobre os 109) e G9 cita AMER3 (+180%), LUPA3 (+148%), TELB4 (+223%) mantidos no dataset. Ou seja: a AMER3 (fraude/RJ desde 2023) e a OIBR3 (RJ) estão dentro do universo, e os saltos de +148%/+180% são os artefatos de grupamento que essa investigação inteira existiu para eliminar.
+E é quase certo que isso está piorando o MinCDaR (item 3): uma estratégia que minimiza drawdown é justamente a mais vulnerável a esses saltos espúrios.
+Verificação rápida (roda e me diz):
+pythonimport pandas as pd
+fin = pd.read_csv(r"C:\VSCodeWorkspace\1_TCC_Final\data\Tickers\tickers_finais.csv")["ticker"].astype(str).str.strip().tolist()
+print("N =", len(fin))
+for t in ['AMER3','OIBR3','OIBR4','LUPA3','VIVR3','PDGR3','GFSA3','NEXP3','RCSL4']:
+    print(t, "->", t in fin)
+Se vierem True, a correção é mecânica e limpa: rodar o classificador de integridade sobre o universo atual de 118 (a saída do NB03 depois do ADTV e antes da integridade), não sobre a tickers_finais.csv antiga. A regra que a gente desenhou pega AMER3, OIBR3, LUPA3 por "situação especial recente" sem esforço. Hoje o classificador está rodando sobre o universo errado.
+🟠 2. Seus resultados-título MUDARAM — a narrativa antiga não bate mais
+Isto é importante para a tese, não para o código. Pela minha leitura do seu histórico, o achado central era "nenhuma estratégia entrega alpha significativo; todas com Sharpe ajustado por CDI negativo; relação inversa complexidade-desempenho; MinVar a melhor". Os números atuais (Seção F) dizem o contrário:
+
+BL_classico: Sharpe 0,60, alpha CAPM +12,86% a.a., t=2,00 — significativo. As estratégias mais complexas (BL) estão ganhando.
+1/N rebalanceado: Sharpe 0,03 (o pior). MinVar 0,29, MaxSharpe 0,30.
+
+Isso não sustenta mais a história de DeMiguel (inverso complexidade). Se o texto da tese ainda afirma "complexidade não compensa / alpha não-significativo", ele agora contradiz seus próprios dados.
+Duas ressalvas que te dão fôlego: (a) o "ganho" do BL é frágil — t=2,00 está exatamente no limite, turnover de 8× a.a. e o custo só foi modelado a 50 bps sem análise de sensibilidade (G5); a 100 bps o BL pode virar; e (b) corrigir o item 1 vai mexer nos números de novo. Então não reescreva a narrativa ainda — trave o universo primeiro.
+🟠 3. MinCDaR continua quebrado (e piorou)
+CAGR −3,97%, MaxDD −84,10%, alpha −13,6% (t=−2,68). Era −1,75%/−81,8% na auditoria; re-rodar não consertou — piorou. Isso confirma que não era a contaminação do FICT3 (já removido); é a formulação/solver do CDaR, possivelmente agravada pelos artefatos do item 1. Decisão para depois de travar o universo: ou guarda pós-solver, ou mover o MinCDaR para um apêndice metodológico com a falha documentada.
+Itens menores (rápidos)
+
+109, não 113. O "113" que travamos vinha da tickers_finais.csv de 122 (stale). O número real do pipeline é 109 — e mudará de novo após o item 1. Não escreva nenhum número na tese até travar.
+momentos_anuais.csv com 110 linhas (G4): quase certamente o header/índice, mas confirme.
+EW_BuyHold "vence" por concentração em UNIP6 (~79,5×) (G3): se for citar, qualifique como artefato de concentração, não habilidade.
+
+Ordem que eu sugiro
+
+Rodar a verificação acima. Confirma se AMER3/OIBR3/LUPA3/VIVR3 estão nos 109.
+Se sim, regenerar a integridade sobre o universo de 118 (expor a saída do NB03 pós-ADTV/pré-integridade e apontar o classificador para ela). Re-aplicar.
+Re-rodar o pipeline com o universo corrigido.
+Só então reavaliar resultados e narrativa, e decidir o MinCDaR.
+
+O mais urgente é o item 1 — ele pode estar contaminando silenciosamente todos os resultados, inclusive o "achado" novo do BL. Me manda o retorno da verificação que eu te ajudo a ajustar o ponto exato do NB03 onde o classificador deve entrar (vira a "Etapa de integridade" de verdade, alimentada pelo universo corrente em vez de um CSV congelado de uma versão antiga).Você disse: claude, arruma o codigo pra mim,03_01_Ingestao_Filtro_Liquidez_v2.ipynbipynbclaude, arruma o codigo pra mim,6 de jun.Claude respondeu: Antes de arrumar, preciso ler o NB03 inteiro pra ver a estrutura real — onde o universo é montado, como a exclusão de integridade é aplicada hoje, e os nomes d…Desvendando a estrutura real do notebook NB03Desvendando a estrutura real do notebook NB03Antes de arrumar, preciso ler o NB03 inteiro pra ver a estrutura real — onde o universo é montado, como a exclusão de integridade é aplicada hoje, e os nomes das variáveis. Não vou mexer no que não entendi.Architected integrity filter fix for notebook pipelineArchitected integrity filter fix for notebook pipelineJá entendi — e o NB03 v2 que você subiu não tem etapa de integridade nenhuma: o funil vai presença → IPO → ADTV → ffill → salva. (O relatório analisou a v3, que aplicava uma lista congelada.) Então a raiz do problema fica clara: o classificador lia a tickers_finais.csv antiga de 122, e o universo real aqui é outro — por isso AMER3/OIBR3/etc. escapavam.
+O conserto certo é fazer o NB03 exportar o universo corrente (pra o classificador avaliar o universo certo) e aplicar a exclusão sobre ele. Vou inserir essa etapa logo após o ADTV, sem mexer no resto.Executou um comando, leu um arquivoExecutou um comando, leu um arquivoPronto. Inseri uma única etapa nova — "7.5 Filtro de Integridade" — logo após o ADTV (célula 15), sem tocar em mais nada. As saídas foram limpas pra você re-executar do zero.
+O que a etapa faz, e por que conserta a raiz:
+
+Exporta Tickers/universo_pos_liquidez.csv — o universo corrente (~118) depois dos filtros de liquidez. Era exatamente isto que faltava: o classificador lia a tickers_finais.csv antiga (122) em vez do universo de verdade, então AMER3/OIBR3/LUPA3/VIVR3 nunca eram avaliados.
+Aplica tickers_excluidos_integridade.csv sobre df_pos_liquidez, com um aviso alto se algum ticker da lista não estiver no universo corrente (sintoma de lista gerada sobre universo diferente).
+Grava a tickers_finais.csv pós-integridade e imprime o funil ADTV → Integridade.
+
+Como o df_pos_liquidez é reatribuído, o ffill, os testes e a matriz salva a jusante já saem pós-integridade — sem mexer no resto.
+O fluxo que você precisa seguir (duas passagens)
+A correção do NB03 sozinha não basta; ela depende de regenerar a lista sobre o universo certo:
+
+Rode o NB03 corrigido → ele exporta universo_pos_liquidez.csv. (Nesta primeira passagem, se a lista de exclusão ainda for a antiga, o aviso vai disparar — é esperado.)
+No classificador de integridade, mude uma linha: ARQ_UNIVERSO apontando para universo_pos_liquidez.csv (em vez de tickers_finais.csv). Rode → ele regenera tickers_excluidos_integridade.csv capturando AMER3/OIBR3/LUPA3/VIVR3 por situação especial recente.
+Re-execute o NB03 → agora aplica a lista correta; a matriz sai com o universo final limpo.
+Re-rode o resto do pipeline (NB05→NB09).
+
+Dois pontos de atenção honestos
+
+A matriz salva é o artefato autoritativo (NB05 lê ela), e sai correta com 109‑e‑poucos. Mas se a sua gerar_auditoria_exclusoes (em utils/auditoria.py) também grava uma tickers_finais.csv, ela pode sobrescrever a minha com o número pré‑integridade. Se quiser que o módulo de auditoria registre a etapa de integridade no funil, me sobe o utils/auditoria.py que eu encaixo lá também.
+Se a célula 19 (executar_testes_integridade) reclamar de contagem de colunas, é porque ela espera o conjunto pré‑integridade — me sobe o utils/filtros.py que eu alinho. Os testes usuais (sem NaN, ADTV ≥ limiar, datas) passam normalmente, porque o pós‑integridade é subconjunto do aprovado no ADTV.
+
+Quando rodar a primeira passagem, me manda o retorno do classificador sobre o universo_pos_liquidez.csv — aí a gente confere quem entrou na lista final de exclusão (deve crescer dos 9 atuais para incluir os distressed reincluídos) antes de você fechar o universo e re-rodar tudo.03 01 ingestao filtro liquidez v3 corrigidoIPYNB Abrir em Bloco de notasVocê disse: claude, analise o relatorio e me fale exatamente aonde alterar o codigoRELATORIO_ESTADO_PIPELINE.mdmdclaude, analise o relatorio e me fale exatamente aonde alterar o codigo6 de jun.Claude respondeu: Li o relatório (é o mesmo de antes — você ainda não re-rodou com a correção).Identificou bug de integridade e pinpointed exatas localizações códigoIdentificou bug de integridade e pinpointed exatas localizações códigoLi o relatório (é o mesmo de antes — você ainda não re-rodou com a correção). Ele confirma o bug preto no branco: nas seções G6 e G9, VIVR3, AMER3 (+180%) e LUPA3 (+148%) aparecem dentro dos dados a jusante — ou seja, estão nos 109. Esses eram os nomes que o antigo filtro de preço-máximo tirava e que o ADTV deixou voltar. Eles nunca passaram pela triagem de integridade porque o classificador leu o universo errado.
+A correção são dois pontos exatos, em dois arquivos. Vou te dar localização e linha.
+Edição 1 — exportar o universo correto (NB03)
+Arquivo: src/03_Filtro_Liquidez/03_01_Ingestao_Filtro_Liquidez_v3.ipynb
+Onde: logo depois da célula que roda filtrar_adtv_formacao (a que produz o df_pos_liquidez com 118 ativos) e antes da célula que lê tickers_excluidos_integridade.csv.
+O que adicionar:
+pythonfrom pathlib import Path
+DIR_TICKERS = PARENT_PATH / "data" / "Tickers"
+DIR_TICKERS.mkdir(parents=True, exist_ok=True)
+
+# Universo pós-liquidez (118) — ESTE é o input correto do classificador de integridade
+pd.Series(list(df_pos_liquidez.columns), name="ticker").to_csv(
+    DIR_TICKERS / "universo_pos_liquidez.csv", index=False)
+print(f"[Integridade] universo pós-liquidez exportado: {df_pos_liquidez.shape[1]} ativos")
+
+Confirme o nome da variável: no NB03 v2 que você me mandou, o DataFrame pós-ADTV é df_pos_liquidez. E o v3_corrigido que te entreguei já contém esta edição — se você adotar aquele arquivo, a Edição 1 está feita.
+
+Edição 2 — apontar o classificador para o universo certo (a edição que ainda falta de verdade)
+Arquivo: src/11_Classificador_Integridade/Apendice_Classificador_Integridade_Universo_v2.ipynb
+Onde: a célula de CONFIGURAÇÃO (a primeira, com os caminhos).
+O que mudar:
+python# ANTES (lê o universo errado — a lista pós-integridade de 109, que já tirou os 9 mas mantém AMER3/OIBR3/...):
+# ARQ_UNIVERSO = Path(r"C:\VSCodeWorkspace\1_TCC_Final\data\Tickers\tickers_finais.csv")
+
+# DEPOIS (lê o universo pré-integridade de 118, exportado pelo NB03 na Edição 1):
+ARQ_UNIVERSO = Path(r"C:\VSCodeWorkspace\1_TCC_Final\data\Tickers\universo_pos_liquidez.csv")
+Esta é a edição central. Sem ela, o classificador continua avaliando o conjunto errado e AMER3/OIBR3/LUPA3/VIVR3 nunca entram na lista de exclusão.
+Ordem de execução (importante)
+
+NB03 → gera universo_pos_liquidez.csv (118).
+Classificador v2 (com a Edição 2) → regenera tickers_excluidos_integridade.csv, agora capturando os distressed por situação especial recente.
+NB03 de novo → aplica a lista atualizada; a matriz sai já limpa.
+NB05 → NB09.
+
+O que esperar: a lista de exclusão cresce dos 9 atuais (FICT3, GOLL54, VSTE3, PDTC3, LIGT3, PMAM3, RPMG3, RSID3, ETER3) para ~13, somando AMER3, LUPA3, VIVR3 (confirmados no relatório) e provavelmente OIBR3. O universo final cai de 109 para ~105.
+
+Outras alterações de código que o relatório aponta (secundárias)
+Faça depois de travar o universo, porque os números vão mudar:
+
+MinCDaR quebrado (G2) — src/07_Otimizacao_Carteiras/07_01_Otimizacao_Carteiras.ipynb, na função que resolve o CDaR: adicionar checagem de status do solver (prob.status == "optimal") e fallback. Não consigo te dar a linha exata sem ver o NB07 — me sobe ele que eu aponto. Possível também que os artefatos de AMER3/LUPA3 (os +148%/+180%) estejam agravando isso; pode melhorar sozinho após a Edição 2.
+Sensibilidade a custo (G5/sugestão 5) — mesmo NB07: um loop sobre CUSTO_BPS ∈ {0,25,50,100} para uma tabela no TCC. Opcional, mas blinda o "ganho" do BL.
+momentos_anuais.csv com 110 linhas (G4) — src/06_.../06_01_Estimacao_LedoitWolf.ipynb, na gravação: provável index=True indevido ou linha de índice. Cosmético.
+109 ≠ 113 (G1) — não é código, é texto: ao escrever o Cap. 3, use o número real (que será ~105 após a correção), nunca o "113".
+
+O urgente são as Edições 1 e 2. Quando rodar o passo 2, me manda o novo "RESUMO" do classificador — confirmamos juntos se AMER3/OIBR3/LUPA3/VIVR3 entraram na exclusão antes de você re-rodar o pipeline inteiro. E se quiser que eu pinpointe o MinCDaR, é só subir o NB07.Você disse: resultado do processamento do codigo solicitado.resultado do processamento do codigo solicitado. vou alterar e rodar novamente o filtro liquidez6 de jun.Você disse: import pandas as pdimport pandas as pd
+fin = pd.read_csv(r"C:\VSCodeWorkspace\1_TCC_Final\data\Tickers\tickers_finais.csv")["ticker"].astype(str).str.strip().tolist()
+print("N =", len(fin))
+for t in ['AMER3','OIBR3','OIBR4','LUPA3','VIVR3','PDGR3','GFSA3','NEXP3','RCSL4']:
+    print(t, "->", t in fin)6 de jun.Você disse: N = 109 AMER3 -> True OIBR3 -> True OIBR4 -> True LUPA3 -> True VIVR3 -> True PDGR3 -> True GFSA3 -> True NEXP3 -> True RCSL4 -> FalseN = 109 AMER3 -> True OIBR3 -> True OIBR4 -> True LUPA3 -> True VIVR3 -> True PDGR3 -> True GFSA3 -> True NEXP3 -> True RCSL4 -> False6 de jun.Claude respondeu: Confirmado, e de forma contundente: a verificação fecha o diagnóstico.Confirmado, e de forma contundente: a verificação fecha o diagnóstico. Dos 9 nomes que o antigo filtro de preço-máximo excluía, 8 voltaram para o universo (AMER3, OIBR3, OIBR4, LUPA3, VIVR3, PDGR3, GFSA3, NEXP3 = True), e nenhum deles passou pela triagem de integridade. Só RCSL4 ficou de fora — provavelmente barrado pelo ADTV ou pela presença.
+Isso é exatamente o que a gente previu: a troca do filtro de preço-máximo pelo ADTV reabriu a porta para esses papéis, e a lista de integridade — gerada sobre o universo antigo de 122 — não os contemplava. Eles são, em sua maioria, casos de distress clássico (Americanas/fraude, Oi/RJ, Lupatech/RJ, Viver, PDG, Gafisa em momentos críticos, Nexpe). A regra de "situação especial recente" do classificador deve pegar a maioria assim que você apontar para o universo certo.
+Então o plano está correto e você já sabe os dois pontos a alterar (Edição 1 no NB03 + Edição 2 no classificador). Antes de você rodar, três avisos rápidos para não ter surpresa:
+Primeiro, nem todos os 8 vão necessariamente sair — e isso é esperado, não um erro. O classificador exclui por situação especial recente (2023–2025) ou penny+ilíquido recente ou reorganização. PDG (PDGR3) e Gafisa (GFSA3), por exemplo, tiveram RJ/distress mais antigo e podem ter se recuperado sob a mesma identidade — pela regra de "preserva recuperadas", ficariam. Quando sair a lista, a gente confere caso a caso; pode ser que alguns precisem de avaliação manual igual fizemos com a ETER3.
+Segundo, o OIBR4 apareceu além do OIBR3 — então confirme que o classificador avalia os dois (são emissões distintas da mesma empresa; ambos em RJ).
+Terceiro, e mais importante para você não se perder: depois de rodar o classificador sobre o universo_pos_liquidez.csv, olhe o aviso da Edição 1 no NB03. Se ele disparar "ticker(s) da lista NÃO estão no universo corrente", é sinal de inconsistência; se rodar limpo e o funil mostrar ~105, está certo.
+Manda o "RESUMO" do classificador quando rodar — confirmamos quem saiu e quem ficou (e por quê) antes de você disparar o pipeline inteiro.Você disse: corrija o arquivo claude, nao achei a referencia prob.07_01_Otimizacao_Carteiras.ipynbipynbcorrija o arquivo claude, nao achei a referencia prob.status == "optimal"6 de jun.Claude respondeu: Vou ler o NB07 inteiro pra achar como o MinCDaR é montado e resolvido — preciso ver o solver real, os nomes das variáveis e onde os pesos degenerados passam, a…Identificou problema de validação e planejou leitura do notebookIdentificou problema de validação e planejou leitura do notebookVou ler o NB07 inteiro pra achar como o MinCDaR é montado e resolvido — preciso ver o solver real, os nomes das variáveis e onde os pesos degenerados passam, antes de corrigir.Localizou código em módulo externo e planejou solução defensivaLocalizou código em módulo externo e planejou solução defensivaO MinCDaR não está no notebook — os otimizadores são importados de utils/otimizacao.py (w_min_cdar, _solve). É por isso que você não achou o prob.status: ele está (ou deveria estar) nesse módulo, não aqui. Deixa eu ver como os pesos são consumidos no backtest pra avaliar se dá pra blindar aqui mesmo.Localizou que correção pertence a arquivo módulo não fornecidoLocalizou que correção pertence a arquivo módulo não fornecidoAchei a causa do teu impasse: o prob.status não está no notebook porque os otimizadores não estão aqui. Olha as células 8, 10 e 12 — elas só importam:
+pythonfrom utils.otimizacao import ledoit_wolf, estimar_sigma
+from utils.otimizacao import w_equal, w_inv_vol, w_min_var, w_max_sharpe
+from utils.otimizacao import w_max_kappa, w_min_cvar, w_min_cdar, _solve
+O MinCDaR vive em utils/otimizacao.py, nas funções w_min_cdar e _solve. O backtest (célula 20) só chama otimizar_mes_task (também do módulo) e consome os pesos prontos. Então não há o que corrigir neste notebook para o MinCDaR — o conserto é no módulo, e por isso você não encontrou a referência.
+Onde está o bug (com alta confiança)
+A própria célula 20 imprime "tolerância CVXPY 1e-4" — tolerância frouxa. Combinada com a janela expansiva que cresce até ~3.000 observações, o LP do CDaR (com restrições de drawdown período a período) fica mal-condicionado, o solver retorna optimal_inaccurate, e o _solve aceita esse status e devolve pesos degenerados. Eles passam nos invariantes (soma=1, long-only), então ninguém barra — e viram o −84% de drawdown. É exatamente o diagnóstico da auditoria original.
+O conserto, em duas frentes (no utils/otimizacao.py)
+Frente 1 — _solve: rejeitar status não-ótimo e sinalizar falha. Pelo uso na célula 16, _solve(problema) resolve in-place. A versão robusta:
+pythondef _solve(problem, solvers=None):
+    """Tenta os solvers em ordem; ACEITA apenas status OPTIMAL (rejeita optimal_inaccurate).
+    Retorna True se resolveu de forma confiável; False caso contrário."""
+    for s in (solvers or _SOLVERS):
+        try:
+            if s == "CLARABEL":
+                problem.solve(solver=s, tol_gap_abs=1e-8, tol_gap_rel=1e-8, tol_feas=1e-8)
+            elif s == "ECOS":
+                problem.solve(solver=s, abstol=1e-8, reltol=1e-8, feastol=1e-8, max_iters=300)
+            elif s == "SCS":
+                problem.solve(solver=s, eps=1e-6, max_iters=20000)
+            else:
+                problem.solve(solver=s)
+        except Exception:
+            continue
+        if problem.status == cp.OPTIMAL:     # <- antes provavelmente aceitava OPTIMAL_INACCURATE
+            return True
+    return False
+Frente 2 — w_min_cdar: cair para um fallback quando o solve não é confiável. Depois de montar o problema e chamar _solve, adicionar a guarda:
+pythonok = _solve(prob)
+w = None if w_var.value is None else np.asarray(w_var.value).flatten()
+if (not ok) or w is None or not np.isfinite(w).all() or abs(w.sum() - 1) > 1e-4 or (w < -1e-6).any():
+    return w_equal(R.shape[1])          # fallback documentado quando o CDaR não converge
+w = np.clip(w, 0.0, None); return w / w.sum()
+Frente 3 (raiz, opcional mas melhor) — limitar a janela do CDaR. O problema real é a janela expansiva de ~3.000 dias. Estimar o CDaR sobre os últimos ~756 pregões (3 anos) em vez de toda a história deixa o LP bem-condicionado e é metodologicamente defensável (drawdown recente é mais relevante). Isso ataca a causa, não o sintoma.
+O que preciso de você
+A célula 16 (validação) e a 20 (backtest) eu não mexo — estão corretas. Me sobe o utils/otimizacao.py que eu te devolvo a _solve e a w_min_cdar corrigidas exatamente, encaixadas na tua construção do LP (preciso ver como você monta as variáveis de drawdown pra não chutar). As Frentes 1 e 2 acima são o esqueleto; a 3 eu aplico se você topar limitar a janela.
+Dois avisos honestos:
+
+O fallback muda os resultados do MinCDaR (meses que falharem viram equal-weight). É o comportamento correto — um fundo real não confiaria num solve que não convergiu —, mas precisa ser declarado no texto.
+Faça a correção do universo primeiro. Os artefatos de AMER3 (+180%) e LUPA3 (+148%) que estão entrando agora são exatamente o tipo de salto que detona um otimizador de drawdown. É bem possível que o MinCDaR melhore sozinho depois que esses papéis saírem — então conserte o universo, re-rode, e só então reavalie se ainda precisa das Frentes 1–3.
+otimizacao.pypy6 de jun.Claude respondeu: Agora sim — com o módulo em mãos posso corrigir direito.The user prompt is empty, so there is no primary language established. However, based on the thinking block being in English, I'll provide the summary in English:
+
+Diagnosing solver failures and ill-conditioned optimization problemsThe user prompt is empty, so there is no primary language established. However, based on the thinking block being in English, I'll provide the summary in English:
+
+Diagnosing solver failures and ill-conditioned optimization problemsAgora sim — com o módulo em mãos posso corrigir direito. Deixa eu ler tudo, com atenção especial ao _solve, w_min_cdar e ao otimizar_mes_task.Diagnosed optimization bugs and engineered robust solver fixesDiagnosed optimization bugs and engineered robust solver fixesAgora tenho o quadro completo. Achei a causa exata — e ela tem duas camadas:
+
+w_min_cdar aceita optimal_inaccurate (linha 354) e logo em seguida faz x = np.clip(w.value, ...) sem verificar nada (linha 359). Quando o solver não converge direito, ele devolve pesos degenerados que passam batido — daí o −84%.
+A raiz numérica: Rcum = cumprod(1+R) sobre T≈3.000 dias com ativos de crescimento enorme (e pior, os artefatos de AMER3/LUPA3 a +180%/+148%) gera uma riqueza acumulada de magnitude gigante → o LP fica mal-condicionado → o solver pára em optimal_inaccurate. O try/except do otimizar_mes_task só cai pra EqualWeight se houver exceção — e optimal_inaccurate não levanta exceção, então o fallback nunca dispara.
+
+Vou corrigir e testar com cvxpy de verdade.Applying robust solver-status + guard + rescale + optional window patches to otimizacao.pyApplying robust solver-status + guard + rescale + optional window patches to otimizacao.pyVocê disse: continuarcontinuar6 de jun.Claude respondeu: Patches aplicados.Planificó validar funciones mediante pruebas prácticas con datos realesPlanificó validar funciones mediante pruebas prácticas con datos realesPatches aplicados. Agora vou validar com cvxpy de verdade — caso limpo (deve dar optimal), os invariantes da célula 16, e um caso com artefato tipo AMER3 pra confirmar que a guarda dispara em vez de propagar lixo.Validated optimization fix and prepared finalized output fileValidated optimization fix and prepared finalized output fileTodos os testes passaram — e o resultado é exatamente o que queríamos:
+
+Caso limpo: CVaR e CDaR sãos, monotônicos, e os invariantes da célula 16 batem (w_cd[2]<0.60).
+Janela longa (riqueza final 1,5 milhão×): com a reescala, o CDaR resolve como optimal com pesos sãos (máx 0,42). Antes do fix, essa magnitude era justamente o que disparava optimal_inaccurate → pesos degenerados.
+Artefato +180% (tipo AMER3/LUPA3): o otimizador resolveu e colocou peso ZERO no ativo do artefato — exatamente o que um minimizador de drawdown deve fazer. Nada de lixo, nada de −84%.
+janela_max=756: a alavanca opcional da Frente 3 funciona.
+
+Repara que nem precisou cair pro fallback no caso do artefato — a reescala bem-condicionou o problema o suficiente pra ele resolver de verdade e evitar o ativo ruim sozinho. O fallback fica só como rede de segurança pra falhas genuínas (raras agora).Executou um comando, leu um arquivoExecutou um comando, leu um arquivoAqui está o utils/otimizacao.py corrigido e testado. O que mudou, em quatro pontos:
+
+_resolver_robusto (novo) + _solve estrito. Agora aceita só optimal — optimal_inaccurate deixou de passar batido. O _solve (usado na validação) retorna True apenas com solução confiável.
+w_min_cdar — reescala de condicionamento. Rcum é normalizado para ordem O(1) antes de montar o LP. Como é um escalar positivo global, o argmin (os pesos) é idêntico, mas o solver para de operar com magnitudes que disparavam o optimal_inaccurate. Esta é a correção da raiz.
+Guarda + fallback. Tanto w_min_cdar quanto w_min_cvar validam o resultado (status=='optimal', pesos finitos, soma≈1, long-only) e levantam RuntimeError se algo falhar. Isso aciona o try/except que já existe no seu otimizar_mes_task (linhas 428–433), que cai para EqualWeight. Nenhuma mudança necessária no NB07 nem no resto do módulo.
+janela_max (opcional) em w_min_cdar — a alavanca da Frente 3, default None (sem mudança de comportamento). Se quiser o CDaR sobre os últimos N pregões, passe janela_max=756.
+
+Não toquei em mais nada — ledoit_wolf, w_min_var, w_max_kappa, Black-Litterman, etc. ficaram intactos.
+Dois avisos honestos
+
+Faça a correção do universo primeiro. Os testes mostram que a reescala já dá conta de crescimento extremo legítimo, mas os artefatos de AMER3 (+180%) e LUPA3 (+148%) são justamente o pior caso. É bem provável que o MinCDaR melhore muito só com a saída desses papéis — então conserte o universo, re-rode, e veja o MinCDaR antes de concluir qualquer coisa sobre ele.
+Se ainda assim cair muito no fallback, você vai ver os warnings.warn("CDaR falhou (i=...)") do otimizar_mes_task — conte quantos meses. Se forem poucos, ótimo (declare no texto que meses sem convergência usam 1/N). Se forem muitos, a saída é passar janela_max=756 na chamada do otimizar_mes_task (linha 429) — me avisa que eu ajusto.
+
+Ordem recomendada para fechar tudo: (1) universo — Edições 1 e 2 que já te passei; (2) re-rodar NB03 → classificador → NB03; (3) substituir este otimizacao.py; (4) re-rodar NB05→NB09; (5) reavaliar resultados e narrativa com o universo limpo e o MinCDaR consertado. Quando rodar o classificador sobre o universo correto, me manda o RESUMO que a gente confere a lista antes do pipeline inteiro.
+
+

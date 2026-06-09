@@ -1,0 +1,11 @@
+Teste,H₀,Estat.,p-valor,Decisão
+ADF (log-retornos),raiz unitária,-23.383158996944413,0.0,Rejeita H₀ ✗
+KPSS (log-retornos),estacionariedade,0.14917170492071627,0.1,Não rejeita H₀ ✓
+ADF (nível),raiz unitária,-0.054907034409081845,0.9537488289896682,Não rejeita H₀ ✓
+KPSS (nível),estacionariedade,8.57416109762461,0.01,Rejeita H₀ ✗
+Ljung-Box Q(10) em r,sem autocorrelação,72.15366877703828,1.698989027454165e-11,Rejeita H₀ ✗
+Ljung-Box Q(10) em r²,sem efeito ARCH,4362.890542538154,0.0,Rejeita H₀ ✗
+ARCH-LM (10 lags),variância constante,1514.1045550969031,0.0,Rejeita H₀ ✗
+Jarque-Bera,normalidade,24533.910724087134,0.0,Rejeita H₀ ✗
+VR k=2 (Lo-MacKinlay),passeio aleatório,-1.5898475903986493,0.11186916360810506,Não rejeita H₀ ✓
+VR k=16 (Lo-MacKinlay),passeio aleatório,-0.1699873961836591,0.8650200487810262,Não rejeita H₀ ✓

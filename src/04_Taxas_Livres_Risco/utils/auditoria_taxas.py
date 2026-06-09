@@ -1,51 +1,35 @@
-"""Diagnósticos de integridade das séries de taxas (funções puras).
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
+from pathlib import Path
 
-Cada função recebe DataFrames/Series e devolve estruturas de dados; a
-apresentação (impressão/formatação) fica a cargo do notebook.
-"""
-from __future__ import annotations
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-import pandas as pd
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
 
-def pregoes_por_ano(df: pd.DataFrame, col_data: str = "data") -> pd.Series:
-    """Mapeia a quantidade de pregões válidos agrupados por ano."""
-    return df.groupby(df[col_data].dt.year).size()
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.auditoria_taxas"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
 
-
-def diagnostico_valores(df: pd.DataFrame, col: str, nome: str) -> dict:
-    """Executa sanity check básico de integridade numérica em valores diários."""
-    s = df[col]
-    return {
-        "Série": nome,
-        "NaN": int(s.isna().sum()),
-        "Zeros": int((s == 0).sum()),
-        "Negativos": int((s < 0).sum()),
-        "Min (%)": float(s.min()),
-        "Max (%)": float(s.max()),
-        "Média (%)": float(s.mean()),
-        "Mediana (%)": float(s.median()),
-    }
-
-
-def listar_transicoes(df: pd.DataFrame, col_valor: str, anos: tuple = (2022, 2023)) -> pd.DataFrame:
-    """Identifica as transições de patamar de taxa (degraus do Copom)."""
-    d = df.copy()
-    d["mudou"] = d[col_valor].diff().fillna(0) != 0
-    transicoes = d.loc[d["mudou"] & d["data"].dt.year.isin(anos), ["data", col_valor]].copy()
-    transicoes["valor_anterior"] = d[col_valor].shift().loc[transicoes.index]
-    transicoes["Δ (bps a.d.)"] = (transicoes[col_valor] - transicoes["valor_anterior"]) * 10000
-    return transicoes.reset_index(drop=True)
-
-
-def construir_comparativo_spread(cdi: pd.DataFrame, selic: pd.DataFrame) -> pd.DataFrame:
-    """Funde CDI e SELIC pelos pregões em comum e calcula o spread em bps a.d.
-
-    Devolve um DataFrame com `data`, `cdi_diario_pct`, `selic_diario_pct` e
-    `spread_bps` = (cdi − selic) × 10.000.
-    """
-    comp = cdi[["data", "cdi_diario_pct"]].merge(
-        selic[["data", "selic_diario_pct"]], on="data", how="inner"
-    )
-    comp["spread_bps"] = (comp["cdi_diario_pct"] - comp["selic_diario_pct"]) * 10000
-    return comp
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

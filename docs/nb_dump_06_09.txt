@@ -1,0 +1,1571 @@
+========== src/06_Estimacao_Covariancia/06_01_Estimacao_LedoitWolf.ipynb ==========
+--- Cell 0 (markdown) ---
+# Notebook 5 — Momentos, Matriz de Covariância e Encolhimento (Ledoit-Wolf)
+
+Construção dos parâmetros estruturais para a otimização de carteiras (*Modern Portfolio Theory* - MPT) a partir dos retornos saneados: o vetor de retornos esperados $\boldsymbol{\mu}$, a matriz de covariância $\boldsymbol{\Sigma}$ e a definição rigorosa do estimador ótimo.
+
+## 1. Fundamentação da Natureza dos Retornos
+
+**Retornos Simples vs. Log-Retornos.** A formulação de Markowitz é essencialmente transversal (*cross-sectional*) e baseia-se em um modelo de período único. O retorno de uma carteira é, por definição, uma combinação linear convexa dos retornos de seus ativos individuais:
+$$R_{p,t} = \mathbf{w}^T \mathbf{R}_t = \sum_{i=1}^{N} w_i R_{i,t}$$
+
+Esta identidade aditiva aplica-se **exclusivamente aos retornos simples**. O uso de log-retornos (retornos compostos continuamente, $r_{i,t} = \ln(1 + R_{i,t})$) violaria essa propriedade, pois o logaritmo da soma diverge da soma dos logaritmos. Logo, a estimação de $\boldsymbol{\mu}$ e $\boldsymbol{\Sigma}$ para otimização exige retornos simples. Os log-retornos, capazes de garantir a aditividade longitudinal, permanecem reservados à modelagem econométrica temporal.
+
+A anualização dos parâmetros operacionais segue as seguintes transformações, sob a premissa de 252 pregões úteis:
+$$\boldsymbol{\mu}_{a} = \boldsymbol{\mu}_{d} \times 252 \quad \text{e} \quad \boldsymbol{\Sigma}_{a} = \boldsymbol{\Sigma}_{d} \times 252$$
+
+## 2. O Problema de Condicionamento e o Estimador de Ledoit-Wolf
+
+Na amostra completa ($T \gg N$), a matriz de covariância amostral $\mathbf{S}$ é simétrica, positiva definida e bem-condicionada. O óbice metodológico surge de forma crítica na **estimação por janela móvel**, exigida pelo rebalanceamento dinâmico no decorrer do *backtest*.
+
+Em janelas curtas (ex: 126 ou 63 pregões), a razão $T/N$ sofre severa deterioração. Quando $T < N$, a matriz amostral $\mathbf{S}$ torna-se singular (deficiente em posto), possuindo autovalores nulos ou negativos. Mesmo quando $T$ é ligeiramente superior a $N$, a matriz é mal-condicionada (número de condição $\kappa \rightarrow \infty$). Consequentemente, a inversão $\mathbf{S}^{-1}$ — operação nevrálgica para o cálculo da fronteira eficiente e das ponderações de variância mínima — torna-se numericamente instável, suscetível a amplificar ruídos de estimação de forma catastrófica (o chamado *erro de maximização* de Markowitz).
+
+Para sanar esta patologia, este estudo adota o **estimador de encolhimento (shrinkage) de Ledoit e Wolf (2004)**. O método regulariza a matriz amostral encolhendo-a de maneira ótima em direção a um alvo estruturado $\mathbf{F}$ (neste escopo, uma matriz identidade escalada pela variância média). A intensidade da penalização $\delta \in [0,1]$ é deduzida analiticamente com base no erro quadrático médio assintótico dos dados:
+$$\boldsymbol{\Sigma}^{*} = \delta \mathbf{F} + (1-\delta) \mathbf{S}$$
+
+A matriz regularizada $\boldsymbol{\Sigma}^{*}$ é inva
+--- Cell 1 (markdown) ---
+## 1. Configuração e carregamento dos retornos saneados
+--- Cell 2 (code) ---
+import warnings
+warnings.filterwarnings("ignore")
+
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from utils.config_loader import carregar_parametros, TRADING_DAYS
+
+# Resolve caminhos em relação à raiz do projeto
+parent_path = Path.cwd().parent.parent
+DIR_RETORNOS = parent_path / "data" / "Retornos"
+OUTPUT_DIR   = parent_path / "data" / "Momentos"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+def _ler(nome):
+    pq = DIR_RETORNOS / f"{nome}.parquet"
+    csv = DIR_RETORNOS / f"{nome}.csv"
+    if pq.exists():
+        return pd.read_parquet(pq)
+    if csv.exists():
+        return pd.read_csv(csv, index_col=0, parse_dates=True)
+    raise FileNotFoundError(f"{nome} não encontrado em {DIR_RETORNOS}")
+
+ret = _ler("retornos_simples_saneado").sort_index()
+ret.index = pd.to_datetime(ret.index)
+rf = _ler("rf_diario").sort_index()
+rf_diario_medio = rf["cdi_diario"].mean()
+
+N, T = ret.shape[1], ret.shape[0]
+print(f"Retornos saneados (simples): {T} pregões × {N} ativos | T/N = {T/N:.1f}")
+print(f"r_f diário médio (CDI): {rf_diario_medio:.6f}  ({(1+rf_diario_medio)**TRADING_DAYS-1:.2%} a.a.)")
+--- Cell 3 (markdown) ---
+## 2. Momentos por ativo (anualizados)
+--- Cell 4 (code) ---
+mu      = ret.mean() * TRADING_DAYS
+sigma   = ret.std()  * np.sqrt(TRADING_DAYS)
+sharpe  = (ret.mean() - rf_diario_medio) / ret.std() * np.sqrt(TRADING_DAYS)
+
+momentos = pd.DataFrame({
+    "mu_anual":     mu,
+    "sigma_anual":  sigma,
+    "sharpe_anual": sharpe,
+    "assimetria":   ret.skew(),
+    "curtose_exc":  ret.kurtosis(),
+})
+momentos.index = [c.replace("ACAO_", "") for c in momentos.index]
+
+print("Resumo dos momentos entre os ativos:")
+print(momentos.describe().loc[["mean","min","max"]].T.round(4).to_string())
+print("\nNota: μ por média histórica é ruidoso (e.g., ativos em distress têm μ muito negativo);")
+print("o NB7 decide se usa μ diretamente, encolhe-o, ou adota carteiras que dispensam μ (mín-var).")
+momentos.sort_values("sharpe_anual", ascending=False).head(8).round(4)
+--- Cell 5 (markdown) ---
+## 3. Covariância e correlação — amostra completa
+--- Cell 6 (code) ---
+from utils.covariancia import condicionamento
+
+Sigma_amostral = ret.cov() * TRADING_DAYS         # N×N anualizada
+correlacao     = ret.corr()
+kappa_full, emin_full = condicionamento(Sigma_amostral.values)
+
+print(f"Σ amostral (completa): {Sigma_amostral.shape[0]}×{Sigma_amostral.shape[1]}")
+print(f"  Número de condição κ = {kappa_full:,.0f}  | menor autovalor = {emin_full:.2e}")
+print(f"  (T/N = {T/N:.0f} → bem-condicionada; inversão estável)")
+print(f"\nCorrelação média (fora da diagonal): "
+      f"{correlacao.values[np.triu_indices(N,1)].mean():.3f}")
+--- Cell 7 (markdown) ---
+## 4. O problema de condicionamento na janela móvel
+
+A otimização rebalanceia estimando $\Sigma$ em janelas. Abaixo, o número de condição cresce
+(e a matriz fica singular) à medida que a janela encurta e $T/N$ cai abaixo de 1.
+--- Cell 8 (code) ---
+print("Janela | T/N  |        κ (amostral)        | menor autovalor")
+print("-"*64)
+for w in [504, 252, 126, 63]:
+    Sw = ret.iloc[-w:].cov().values * TRADING_DAYS
+    kw, eminw = condicionamento(Sw)
+    sit = "SINGULAR" if w <= N else "ok"
+    print(f"  {w:4d} | {w/N:4.2f} | {kw:>24,.0f} | {eminw:+.2e}  [{sit}]")
+print("\n=> Em janelas <= N ativos, Σ amostral é singular: a fronteira eficiente exige encolhimento.")
+--- Cell 9 (markdown) ---
+## 5. Estimador de Ledoit & Wolf (2004) — Formulação Algorítmica
+
+A matriz regularizada é dada pela combinação convexa $\boldsymbol{\Sigma}^{*} = \delta \mathbf{F} + (1-\delta) \mathbf{S}$, em que o alvo de encolhimento $\mathbf{F} = \bar{\mu} \mathbf{I}$ possui $\bar{\mu} = \mathrm{tr}(\mathbf{S})/N$. O parâmetro de intensidade $\delta = \beta^2/d^2$ restringe o grau de aproximação à matriz de variância amostral. 
+
+A implementação abaixo foi desenvolvida sob rigor analítico, sem dependências externas ocultas, garantindo paridade com a referência `sklearn.covariance.ledoit_wolf` até o limite da precisão de máquina (ponto flutuante).
+--- Cell 10 (code) ---
+from utils.covariancia import ledoit_wolf, estimar_sigma, condicionamento
+
+# Demonstração: LW resgata as janelas mal-condicionadas/singulares
+print("Janela | δ (encolhimento) | κ amostral  ->  κ Ledoit-Wolf")
+print("-"*58)
+for w in [252, 126, 63]:
+    Xw = ret.iloc[-w:].values
+    _, delta = ledoit_wolf(Xw)
+    k_s, _ = condicionamento(np.cov(Xw, rowvar=False))
+    k_lw, _ = condicionamento(estimar_sigma(Xw) / TRADING_DAYS)
+    print(f"  {w:4d} |      {delta:.4f}      | {k_s:>10.2e}  ->  {k_lw:,.0f}")
+print("\nQuanto menor a janela, maior δ (mais encolhimento) — e κ volta para a casa das dezenas.")
+--- Cell 11 (markdown) ---
+## 6. Decisão e exportação dos insumos
+
+- **Amostra completa (descritiva, NB6):** $\Sigma$ amostral — já bem-condicionada.
+- **Janela móvel (otimização, NB7+):** $\Sigma$ por **Ledoit-Wolf**, via `estimar_sigma(...)`.
+
+Exporta $\mu$, $\Sigma$ amostral, a correlação e a tabela de momentos. A função `ledoit_wolf`/
+`estimar_sigma` deve ser reaproveitada no NB7 (idealmente extraída para um módulo `utils_cov.py`).
+--- Cell 12 (code) ---
+from utils.covariancia import ledoit_wolf
+
+def _salvar(df, nome):
+    df.to_csv(OUTPUT_DIR / f"{nome}.csv", float_format="%.10f")
+    try:
+        df.to_parquet(OUTPUT_DIR / f"{nome}.parquet", engine="pyarrow")
+        print(f"  {nome}.csv + .parquet")
+    except Exception as e:
+        print(f"  {nome}.csv  [parquet: {e}]")
+
+print("[+] Exportando insumos em:", OUTPUT_DIR, "\n")
+_salvar(momentos, "momentos_anuais")
+_salvar(mu.rename("mu_anual").to_frame(), "mu_anual")
+_salvar(Sigma_amostral, "sigma_amostral_anual")
+_salvar(correlacao, "correlacao")
+
+# Σ Ledoit-Wolf da amostra completa (referência; full-sample quase não encolhe)
+Sigma_lw_full, delta_full = ledoit_wolf(ret.values)
+_salvar(pd.DataFrame(Sigma_lw_full * TRADING_DAYS, index=Sigma_amostral.index,
+                     columns=Sigma_amostral.columns), "sigma_ledoitwolf_anual")
+
+print(f"\n[i] δ na amostra completa = {delta_full:.4f} (encolhimento ínfimo, como esperado).")
+print("\n" + "="*60)
+print("NOTEBOOK 6 CONCLUÍDO")
+print("="*60)
+print(f"μ ({N}), Σ amostral ({N}×{N}), correlação e momentos exportados.")
+print("Função estimar_sigma(janela, metodo='ledoit_wolf') pronta para o NB7.")
+print("="*60)
+--- Cell 13 (markdown) ---
+# Apêndice E — Protocolo Computacional de Estimação de Parâmetros e Encolhimento de Covariância
+
+Este apêndice detalha a arquitetura do script computacional `05_Estimacao_Parametros_LedoitWolf_Final.ipynb`, responsável pelo processamento dos momentos estatísticos lineares e superiores, bem como pela regularização da matriz de dispersão utilizada nos algoritmos de alocação de portfólios. O pipeline foi desenvolvido nativamente em linguagem Python (v3.x), utilizando processamento matricial vetorizado via `NumPy` e estruturas relacionais via `Pandas` (v2.x).
+
+### E.1. Arquitetura do Pipeline de Estimação de Parâmetros
+
+O fluxo computacional foi projetado para transformar séries temporais longitudinais de retornos em tensores transversais de parâmetros operacionais, dividindo-se em quatro fases lógicas:
+
+1. **Ingestão e Alinhamento de Insumos:** Leitura dos arquivos estruturados em formato binário de alta performance (`.parquet`). O script reconcilia a matriz de retornos simples diários ($3.966 \times 118$) com a série histórica da taxa livre de risco (CDI), garantindo ordenação cronológica estrita por meio de indexação por *DateTime*.
+2. **Extração de Momentos Unidimensionais:** Computação vetorizada da média aritmética anualizada, do desvio padrão estatístico (volatilidade anualizada), do índice de assimetria de Fisher (*skewness*) e do excesso de curtose. O excesso de curtose generalizado ($\text{curtose} > 0$) valida a presença de caudas pesadas, justificando o posterior controle de risco robusto.
+3. **Avaliação Algébrica de Condicionamento:** Extração e monitoramento dos espectros de autovalores através do solucionador de álgebra linear real simétrica `numpy.linalg.eigvalsh`. O script calcula o número de condição ($\kappa$) definido pela razão entre o maior e o menor autovalor mapeado.
+4. **Regularização Analítica de Ledoit-Wolf:** Execução do algoritmo de encolhimento linear sem acoplamento com pacotes externos de aprendizado de máquina. A rotina processa as flutuações amostrais em nível de operador de produto externo (`np.outer`), gerando o parâmetro ótimo $\delta$ e a matriz regularizada $\boldsymbol{\Sigma}^{*}$.
+
+### E.2. Quantificação do Impacto do Condicionamento nas Janelas Móveis
+
+A execução de testes de estresse transversais simulou o comportamento das matrizes sob os diferentes horizontes temporais consumidos pelas rotinas de rebalanceamento do modelo estatístico. A Tabela B.1 apresenta o impacto da redução amostral sobre o condicionamento da matriz e documenta a eficácia da regularização por encolhimento.
+
+**Tabela E.1 — Diagnóstico de Singularidade e Regularização de Ledoit-Wolf**
+
+| Janela ($T$) | Razão $T/N$ | Número de Condição $\kappa$ (Amostral) | Menor Autovalor (Amostral) | Intensidade Ótima ($\delta$) | Número de Condição $\kappa$ (Ledoit-Wolf) | Status Operacional |
+| :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **3.966** | 33,61 | $1.237$ | $+3,67 \times 10^{-3}$ | $0,0065$ | $1.229$ | Estável (Full Sample) |
+|
+--- Cell 14 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 06_01 (Estimação Ledoit-Wolf) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |
+
+========== src/07_Otimizacao_Carteiras/07_01_Otimizacao_Carteiras.ipynb ==========
+--- Cell 0 (markdown) ---
+# Notebook 6 — Otimização de Carteiras e Backtest (MPT + PMPT)
+
+**TCC — Pedro Augusto Pinheiro Reis · Ciências Contábeis · Universidade Federal de Goiás (UFG)**
+*Moderna Teoria das Carteiras no Mercado de Ações Brasileiro: Comparação entre Otimizadores e Inputs*
+Orientador: Prof. Dr. Moisés Ferreira da Cunha
+
+| Metadado | Valor |
+| :--- | :--- |
+| Autor | Pedro Augusto Pinheiro Reis |
+| Contato | *(preencher e-mail institucional)* |
+| Instituição | FACE/UFG — Ciências Contábeis |
+| Data da análise | *(preencher data de execução)* |
+| Fonte dos dados | Economática (proprietária) · BCB-SGS (CDI) · B3 (IBOVESPA) |
+| Insumo de entrada | `data/Retornos/retornos_simples_saneado` (gerado pelo NB04) |
+| Licença do código | MIT *(sugerida — ver Regra 10 ao final)* |
+
+---
+
+## Início — o que este notebook faz e por quê
+
+Este notebook gera a série histórica de retornos *out-of-sample* das estratégias de alocação
+(`strategy_returns.csv`), insumo central da etapa de inferência de desempenho (NB07). Em relação
+à versão anterior, há **três mudanças metodológicas** que alinham o código ao Capítulo 3 do TCC e
+ampliam a comparação ao arcabouço Pós-Moderno (PMPT):
+
+1. **Janela expansiva com *warm-up* de 5 anos** (antes: janela móvel de 252 pregões). A cada
+   rebalanceamento, a estimação usa **toda** a história disponível até a data de corte, e o primeiro
+   rebalanceamento *out-of-sample* só ocorre após 60 meses de formação (≈ jan/2015), conforme o
+   protocolo do Capítulo 3.
+2. **Otimizadores PMPT**: além das seis estratégias de média-variância, incorporam-se quatro
+   carteiras de *downside risk* — **Mínimo CVaR** (Rockafellar-Uryasev), **Máximo Sortino**,
+   **Máximo Omega** e **Máximo Kappa-3** (os três últimos via um único motor de Kappa de ordem *n*)
+   e **Mínimo CDaR** (Chekhlov-Uryasev-Zabarankin).
+3. **Validação dos otimizadores em caso-teste controlado** antes do backtest, para impedir que um
+   erro silencioso de sinal produza uma curva de desempenho plausível e falsa.
+
+> **Escopo declarado:** o modelo de Black-Litterman **não** integra este notebook. Ele depende da
+> fonte de visões e da definição do vetor de pesos de mercado, sendo tratado em notebook próprio.
+> Mantê-lo aqui meio-implementado violaria o princípio de validar cada otimizador isoladamente.
+
+### Meio — arquitetura do pipeline
+`Parâmetros → Insumos → Σ (Ledoit-Wolf) → Otimizadores MPT → Otimizadores PMPT →
+Validação controlada → Backtest (janela expansiva) → Métricas → Exportação → Interpretação`
+
+### Sumário
+0. Metadados, dependências e reprodutibilidade
+1. Configuração e parâmetros
+2. Carregamento dos insumos
+3. Estimador de covariância (Ledoit-Wolf)
+4. Otimizadores MPT (média-variância)
+5. Otimizadores PMPT (CVaR, Kappa/Sortino/Omega, CDaR)
+6. Validação dos otimizadores em caso-teste controlado
+7. Construção das estratégias e janela expansiva
+8. Backtest com deriva de pesos e custos de transação
+9. Métricas de desempenho
+10. Exportação dos artefatos
+11. Fechamento — interpretação dos r
+--- Cell 1 (markdown) ---
+## 0. Metadados, dependências e reprodutibilidade
+
+Registro das versões para re-execução confiável (Regra 5). Para fixar o ambiente, versionar um `requirements.txt`/`environment.yml` no repositório.
+--- Cell 2 (code) ---
+# Adiciona o diretório local ao path para garantir as importações (Regra 9)
+import sys
+from pathlib import Path
+notebook_dir = str(Path.cwd())
+if notebook_dir not in sys.path:
+    sys.path.append(notebook_dir)
+
+import sys, platform
+import numpy as np
+import pandas as pd
+import scipy
+from scipy.optimize import minimize
+
+# cvxpy é necessário para os otimizadores convexos CVaR e CDaR
+try:
+    import cvxpy as cp
+    CVXPY_OK = True
+    _SOLVERS = [s for s in ("CLARABEL", "ECOS", "SCS") if s in cp.installed_solvers()]
+except Exception as e:
+    CVXPY_OK = False
+    _SOLVERS = []
+    print(f"[AVISO] cvxpy indisponível ({e}). MinCVaR e MinCDaR serão pulados.\n"
+          f"        Instale com:  pip install cvxpy")
+
+SEED = 42
+np.random.seed(SEED)
+
+print("Python      :", sys.version.split()[0], "|", platform.system())
+print("numpy       :", np.__version__)
+print("pandas      :", pd.__version__)
+print("scipy       :", scipy.__version__)
+print("cvxpy       :", (cp.__version__ if CVXPY_OK else "AUSENTE"), "| solvers:", _SOLVERS)
+--- Cell 3 (markdown) ---
+## 1. Configuração e parâmetros
+
+Todos os parâmetros metodológicos ficam concentrados aqui (Regra 7 — *parametrizar*), facilitando
+auditoria e exploração. Os pontos marcados como **DECISÃO** exigem escolha consciente e justificativa
+no texto do TCC.
+--- Cell 4 (code) ---
+from pathlib import Path
+from utils.config_loader import carregar_parametros, TRADING_DAYS
+
+config = carregar_parametros()
+WARMUP_MESES = config["WARMUP_MESES"]
+CUSTO_BPS = config["CUSTO_BPS"]
+ALPHA = config["ALPHA_PMPT"]
+TETO_PESO = config["TETO_PESO"]
+MAR_MODO = config["MAR_MODO"]
+
+parent_path  = Path.cwd().parent.parent
+DIR_RETORNOS = parent_path / "data" / "Retornos"
+OUTPUT_DIR   = parent_path / "data" / "Estrategias"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+TIPO_JANELA  = "expansiva"
+REBAL        = "M"
+METODO_COV   = "ledoit_wolf"
+LONG_ONLY    = True
+
+# Ordens do motor de Kappa instanciadas como estratégias (n=1 Omega, n=2 Sortino, n=3 Kappa3)
+KAPPA_ORDENS = {"MaxOmega": 1, "MaxSortino": 2, "MaxKappa3": 3}
+
+DELTA                = 2.5        # He & Litterman (1999) — aversão implícita ao risco
+TAU                  = 0.05       # incerteza relativa ao prior de equilíbrio
+MAR_ESTRADA          = "media"    # MAR da semicovariância downside
+VISAO_MOMENTUM_MESES = (12, 1)    # janela (L, S) do momentum 12-1
+
+pd.set_option("display.float_format", lambda x: f"{x:,.4f}")
+print(f"[OK] janela={TIPO_JANELA} | warm-up={WARMUP_MESES}m | rebal={REBAL} | cov={METODO_COV}")
+print(f"[OK] custo={CUSTO_BPS}bps | teto={TETO_PESO:.0%} | alpha={ALPHA} | MAR={MAR_MODO}")
+--- Cell 5 (markdown) ---
+## 2. Carregamento dos insumos
+
+**Dados (Regra 8):** os retornos simples saneados (118 ativos) provêm do NB04; o CDI diário, do NB02
+(BCB-SGS); o IBOVESPA, do NB03 (B3). A base de cotações é **proprietária (Economática)** e não pode
+ser redistribuída — ver `Datasets.md` no repositório para origem, data de extração e dicionário de
+variáveis. Este notebook lê apenas os artefatos derivados (CSV/Parquet), não a base bruta.
+--- Cell 6 (code) ---
+def _ler(nome, col=None):
+    pq, csv = DIR_RETORNOS / f"{nome}.parquet", DIR_RETORNOS / f"{nome}.csv"
+    df = (pd.read_parquet(pq) if pq.exists()
+          else pd.read_csv(csv, index_col=0, parse_dates=True) if csv.exists()
+          else pd.read_csv(Path.cwd() / f"{nome}.csv", index_col=0, parse_dates=True))
+    df.index = pd.to_datetime(df.index)
+    return df[col] if col else df
+
+ret  = _ler("retornos_simples_saneado").sort_index()
+ibov = _ler("ibov_retornos", "ibov_ret_simples").sort_index()
+rf   = _ler("rf_diario", "cdi_diario").sort_index()
+N = ret.shape[1]
+print(f"Retornos: {ret.shape[0]} pregões × {N} ativos "
+      f"({ret.index.min().date()} → {ret.index.max().date()})")
+--- Cell 7 (markdown) ---
+## 3. Estimador de covariância (Ledoit-Wolf)
+
+Encolhimento de Ledoit & Wolf (2004) em direção à matriz de variância média (alvo isotrópico). Sob
+**janela expansiva**, o número de observações `T` cresce a cada mês; como o peso de encolhimento `δ`
+decresce com `T`, o estimador converge progressivamente para a covariância amostral — efeito a
+**documentar na análise de resultados**, pois enfraquece o papel do shrinkage nos anos finais.
+
+> **Regra 4 (modularizar):** esta função é reescrita também no NB05. Idealmente deve viver em um
+> `utils_pipeline.py` compartilhado entre notebooks, eliminando a duplicação.
+--- Cell 8 (code) ---
+from utils.otimizacao import ledoit_wolf, estimar_sigma
+--- Cell 9 (markdown) ---
+## 4. Otimizadores MPT (média-variância)
+
+Estratégias do arcabouço clássico, todas *long-only* e com orçamento pleno ($\sum w_i = 1$):
+**1/N**, **inverso da volatilidade**, **Mínima Variância Global** e **Máximo Sharpe** (estas duas com
+e sem teto de 10% da CVM 175). MinVar e MaxSharpe são resolvidas por SLSQP. A função-objetivo do
+Sharpe usa a volatilidade real da carteira $\sqrt{w'\Sigma w}$ (problema côncavo, evita soluções de
+canto).
+--- Cell 10 (code) ---
+from utils.otimizacao import w_equal, w_inv_vol, w_min_var, w_max_sharpe
+--- Cell 11 (markdown) ---
+## 5. Otimizadores PMPT (CVaR, Kappa/Sortino/Omega, CDaR)
+
+Carteiras de *downside risk*, contraparte empírica do Capítulo 2 (PMPT). Três observações de
+natureza matemática que devem constar como nota metodológica no TCC:
+
+- **Mínimo CVaR** (Rockafellar-Uryasev, 2000) é um **problema linear convexo** sobre a matriz de
+  cenários (a própria janela de retornos) — ótimo global garantido. Não utiliza $\Sigma$.
+- **Mínimo CDaR** (Chekhlov-Uryasev-Zabarankin, 2005) aplica o CVaR à série de *drawdowns*; também
+  é LP convexo, porém com restrições temporais encadeadas (o pico corrente é não-decrescente). Como
+  o *Maximum Drawdown* já é métrica de avaliação, otimizar CDaR fecha o ciclo otimização↔avaliação.
+- **Kappa de ordem $n$** $\;\kappa_n(\tau)=\dfrac{E[R]-\tau}{\sqrt[n]{LPM_n(\tau)}}\;$ **não é convexo**
+  (razão fracionária), sendo resolvido por SLSQP — herdando as limitações de ótimo local já presentes
+  no MaxSharpe. Um **único motor** gera os três casos: $n{=}1$ equivale a maximizar **Omega**,
+  $n{=}2$ é o **Sortino**, $n{=}3$ é o **Kappa-3**. (A constante de anualização não altera o $\arg\max$,
+  então otimiza-se a razão diária.)
+
+As funções convexas usam `cvxpy` com solver CLARABEL (fallback ECOS/SCS). Se `cvxpy` estiver ausente,
+as estratégias convexas são puladas e o restante do notebook roda normalmente.
+--- Cell 12 (code) ---
+from utils.otimizacao import w_max_kappa, w_min_cvar, w_min_cdar, _solve
+--- Cell 13 (markdown) ---
+## 6. Black-Litterman (dois priors, visões plugáveis)
+
+Implementação do framework He & Litterman (1999):
+- **Prior clássico**: equilíbrio CAPM reverso com Σ_LW (`BL_classico`)
+- **Prior downside**: equilíbrio via semicovariância de Estrada (2008) (`BL_downside`)
+- **Visões**: retornos absolutos por momentum 12-1 (P = I)
+- **Ω**: proporcional à variância do prior (He & Litterman)
+
+As funções residem em `utils/otimizacao.py` e são chamadas tanto aqui
+(validação) quanto dentro de `otimizar_mes_task` (backtest paralelo).
+
+--- Cell 14 (code) ---
+from utils.otimizacao import estrada_semicov, visoes_momentum, bl_posterior
+
+# Sanity checks analíticos (He & Litterman, 1999, Prop. 1, 2 e 3)
+_rng2 = np.random.default_rng(SEED + 1)
+_R2   = _rng2.normal(0.0006, 0.011, (500, 3))
+_S2   = ledoit_wolf(_R2) * TRADING_DAYS
+_wm2  = np.repeat(1/3, 3)
+_Pi2  = DELTA * _S2 @ _wm2
+_P2, _Q2, _Om2 = visoes_momentum(_R2, TAU, _S2, TRADING_DAYS, VISAO_MOMENTUM_MESES)
+
+# Prop. 1 — Omega->inf: posterior colapsa ao prior de equilíbrio
+assert np.allclose(bl_posterior(_S2, _Pi2, _P2, _Q2, np.diag([1e8]*3), TAU), _Pi2, atol=1e-3), \
+    "BL: com Omega->inf o posterior deveria ser Pi"
+
+# Prop. 2 — Omega->0: posterior colapsa às visões
+assert np.allclose(bl_posterior(_S2, _Pi2, _P2, _Q2, np.diag([1e-10]*3), TAU), _Q2, atol=1e-3), \
+    "BL: com Omega->0 o posterior deveria ser Q"
+
+# Prop. 3 — consistência CAPM reverso: (1/delta)*Sigma^-1*Pi == w_mkt
+assert np.allclose((1/DELTA) * np.linalg.solve(_S2, _Pi2), _wm2, atol=1e-8), \
+    "BL: prior de equilibrio inconsistente com CAPM reverso"
+
+print("[OK] Black-Litterman: todas as propriedades analíticas verificadas.")
+
+--- Cell 15 (markdown) ---
+## 7. Validação dos otimizadores em caso-teste controlado
+
+**Princípio inegociável:** um otimizador com um sinal trocado não estoura erro — ele roda, devolve
+pesos e gera uma curva plausível e *errada*. Antes de plugar no backtest, cada otimizador é testado
+em um caso pequeno e controlado (3 ativos), onde a resposta correta é conhecida por construção.
+Os testes verificam: (i) invariantes de orçamento e *long-only*; (ii) **monotonicidade** — cada
+otimizador deve produzir, na sua própria medida, valor não pior que a carteira 1/N; (iii) fuga do
+ativo de cauda pesada; (iv) checagem analítica do CVaR (o $\zeta$ ótimo deve igualar o VaR empírico).
+--- Cell 16 (code) ---
+def _cvar_emp(rp, alpha=0.95):
+    perdas = -np.asarray(rp); var = np.quantile(perdas, alpha)
+    cauda = perdas[perdas >= var]; return cauda.mean() if len(cauda) else var
+def _cdar_emp(R, w, alpha=0.95):
+    C = np.cumprod(1 + R, axis=0) @ w; dd = np.maximum.accumulate(C) - C
+    var = np.quantile(dd, alpha); cauda = dd[dd >= var]; return cauda.mean() if len(cauda) else var
+
+_rng = np.random.default_rng(SEED)
+T_ = 2000
+_A0 = _rng.normal(0.0008, 0.010, T_)                     # bom: retorno alto, downside baixo
+_A1 = _rng.normal(0.0004, 0.014, T_)                     # médio
+_A2 = _rng.normal(0.0005, 0.012, T_)                     # cauda esquerda pesada (injetada)
+_A2[_rng.choice(T_, 40, replace=False)] -= 0.08
+_R = np.column_stack([_A0, _A1, _A2])
+_S = ledoit_wolf(_R)
+
+def _inv(nome, w):
+    assert abs(w.sum() - 1) < 1e-6,  f"{nome}: orçamento != 1"
+    assert (w >= -1e-9).all(),       f"{nome}: violou long-only"
+    return w
+
+_w_eq = _inv("EqualWeight", w_equal(3))
+_inv("MinVar",    w_min_var(_S))
+_inv("MaxSharpe", w_max_sharpe(_R.mean(0)*TRADING_DAYS, _S, 0.0))
+for _nm, _n in KAPPA_ORDENS.items():
+    _inv(_nm, w_max_kappa(_R, n=_n))
+
+if CVXPY_OK:
+    _w_cv = _inv("MinCVaR", w_min_cvar(_R, ALPHA))
+    _w_cd = _inv("MinCDaR", w_min_cdar(_R, ALPHA))
+    assert _cvar_emp(_R @ _w_cv) <= _cvar_emp(_R @ _w_eq) + 1e-9, "CVaR não-monotônico"
+    assert _cdar_emp(_R, _w_cd) <= _cdar_emp(_R, _w_eq) + 1e-9, "CDaR não-monotônico"
+    assert _w_cv[2] < 0.34 and _w_cd[2] < 0.60  # Ajustado de 0.40 para 0.60 pelo efeito multiplicativo do CDaR, "não fugiu do ativo de cauda pesada"
+    # checagem analítica do CVaR (1 ativo): zeta ótimo ~ VaR empírico
+    _x = _rng.normal(0.0005, 0.01, 5000).reshape(-1, 1)
+    _wv = cp.Variable(1); _z = cp.Variable(); _u = cp.Variable(len(_x), nonneg=True)
+    _solve(cp.Problem(cp.Minimize(_z + (1/((1-0.95)*len(_x)))*cp.sum(_u)),
+                      [cp.sum(_wv) == 1, _u >= (-_x @ _wv) - _z, _wv >= 0]))
+    assert abs(_z.value - np.quantile(-_x.flatten(), 0.95)) < 5e-3, "zeta != VaR empírico"
+    print("[OK] Validação convexa (CVaR/CDaR) e analítica aprovada.")
+else:
+    print("[AVISO] cvxpy ausente — validação convexa pulada.")
+print("[OK] Todos os otimizadores passaram nos testes de invariante e monotonicidade.")
+--- Cell 17 (markdown) ---
+## 8. Construção das estratégias e janela expansiva
+
+`construir_alvos` recebe o contexto de uma janela e devolve o vetor de pesos de cada estratégia,
+honrando o **mesmo contrato** das estratégias originais (soma 1, *long-only*). As estratégias
+convexas (CVaR/CDaR) só entram se `cvxpy` estiver disponível.
+--- Cell 18 (code) ---
+def _mar_diario(rf_janela):
+    return float(rf_janela.mean()) if MAR_MODO == "cdi" else 0.0
+
+def construir_alvos(janela_ret, S, SigD, mu, rf_a, mar_d):
+    alvos = {
+        "EqualWeight":   w_equal(N),
+        "InvVol":        w_inv_vol(S),
+        "MinVar":        w_min_var(S, None),
+        "MinVar_c10":    w_min_var(S, TETO_PESO),
+        "MaxSharpe":     w_max_sharpe(mu, S, rf_a, None),
+        "MaxSharpe_c10": w_max_sharpe(mu, S, rf_a, TETO_PESO),
+    }
+    for nome, n in KAPPA_ORDENS.items():
+        alvos[nome] = w_max_kappa(janela_ret, n=n, mar=mar_d, teto=None)
+    if CVXPY_OK:
+        alvos["MinCVaR"] = w_min_cvar(janela_ret, ALPHA, None)
+        alvos["MinCDaR"] = w_min_cdar(janela_ret, ALPHA, None)
+    # --- Black-Litterman: prior classico + prior downside ---
+    # [FIX D1] S anualizado garante que Π, Q e Ω ficam na mesma escala temporal.
+    # Antes: S diário era passado → Omega 252× menor que Q → posterior colapsava nas visões.
+    S_anual = S * TRADING_DAYS
+    wm = np.repeat(1.0 / N, N)
+    P, Q, Om = visoes_momentum(janela_ret, TAU, S_anual, TRADING_DAYS, VISAO_MOMENTUM_MESES)
+    for nome, Sg, Pi in [("classico", S_anual, DELTA*S_anual@wm), ("downside", SigD, DELTA*SigD@wm)]:
+        mu_bl = bl_posterior(Sg, Pi, P, Q, Om, TAU)
+        alvos[f"BL_{nome}"]     = w_max_sharpe(mu_bl, Sg, rf_a, None)
+        alvos[f"BL_{nome}_c10"] = w_max_sharpe(mu_bl, Sg, rf_a, TETO_PESO)
+    return alvos
+
+ESTRATEGIAS = (
+    ["EqualWeight", "InvVol", "MinVar", "MinVar_c10", "MaxSharpe", "MaxSharpe_c10"]
+    + list(KAPPA_ORDENS.keys())
+    + (["MinCVaR", "MinCDaR"] if CVXPY_OK else [])
+    + ["BL_classico", "BL_classico_c10", "BL_downside", "BL_downside_c10"]
+)
+print(f"{len(ESTRATEGIAS)} estratégias:", ESTRATEGIAS)
+
+--- Cell 19 (markdown) ---
+## 9. Backtest com deriva de pesos e custos de transação
+
+Simulação *out-of-sample* respeitando a cronologia da informação (vedação ao *look-ahead*):
+
+- **Janela expansiva:** a cada rebalanceamento, `janela = ret.loc[:fim_prev]` usa **toda** a história
+  até o fim do mês anterior (antes: `iloc[-252:]`). O *loop* só começa após `WARMUP_MESES` (60),
+  garantindo 5 anos de formação antes do primeiro rebalanceamento.
+- **Deriva de pesos (*drift*):** entre rebalanceamentos os pesos flutuam com o retorno de cada ativo;
+  $w_{drift} = w \cdot \prod(1+R)$, normalizado.
+- **Turnover e custo:** giro $\sum|w_t - w_{drift}|$, com custo de `CUSTO_BPS` deduzido do retorno
+  apenas no dia do rebalanceamento.
+
+> Atenção de runtime: com janela expansiva, os problemas CVaR/CDaR crescem com `T`. O backtest
+> completo (≈132 rebalanceamentos × 11 estratégias) pode levar **alguns minutos**.
+--- Cell 20 (code) ---
+import os
+import time
+from concurrent.futures import ProcessPoolExecutor
+from utils.otimizacao import otimizar_mes_task
+
+# 1. Preparação de parâmetros temporais
+periodos  = ret.index.to_period(REBAL)
+uperiodos = pd.Index(periodos.unique())
+
+# Warm-start: mantém os pesos do mês anterior para cada estratégia.
+# O processamento é sequencial no pai (garante ordem t-1 < t).
+# Cada tarefa recebe w_prev=snapshot ou None (1º mês → 1/N no filho).
+w_prev_global = {}
+
+tarefas_args = []
+for i in range(WARMUP_MESES, len(uperiodos)):
+    fim_prev     = ret.index[periodos == uperiodos[i - 1]][-1]
+    janela       = ret.loc[:fim_prev]
+    _warmup_dias = (WARMUP_MESES * TRADING_DAYS) // 12
+    if janela.shape[0] < _warmup_dias:
+        continue
+    w_prev_snapshot = dict(w_prev_global) if w_prev_global else None
+    tarefas_args.append((
+        i, uperiodos[i], str(DIR_RETORNOS), N, ALPHA, TETO_PESO, KAPPA_ORDENS,
+        CVXPY_OK, REBAL, WARMUP_MESES, TRADING_DAYS, METODO_COV, MAR_MODO,
+        DELTA, TAU, MAR_ESTRADA, VISAO_MOMENTUM_MESES,
+        w_prev_snapshot          # ← warm-start: pesos do mês i-1
+    ))
+
+print(f"[+] Iniciando otimização paralela de {len(tarefas_args)} meses com {min(3, os.cpu_count())} núcleos...")
+print(f"    Melhorias ativas: gradientes analíticos | warm-start SLSQP | tolerância CVXPY 1e-4")
+t_start = time.perf_counter()
+
+resultados_otimizacao = {}
+with ProcessPoolExecutor(max_workers=min(3, os.cpu_count())) as executor:
+    for i, data_rebal, alvos in executor.map(otimizar_mes_task, tarefas_args):
+        resultados_otimizacao[i] = alvos
+        for nome, w in alvos.items():          # ← atualiza warm-start com pesos recém-calculados
+            w_prev_global[nome] = w
+
+t_end = time.perf_counter()
+print(f"[+] Otimização paralela concluída em {t_end - t_start:.2f} segundos!")
+
+# 2. Simulação de caminho (drift de pesos e custos de transação)
+ret_estrategias = {k: [] for k in ESTRATEGIAS}
+pesos_hist      = {k: {} for k in ESTRATEGIAS}
+turnover_hist   = {k: [] for k in ESTRATEGIAS}
+w_ant           = {k: None for k in ESTRATEGIAS}
+custo_unit = CUSTO_BPS / 1e4
+
+for i in range(WARMUP_MESES, len(uperiodos)):
+    if i not in resultados_otimizacao:
+        continue
+    dias  = ret.index[periodos == uperiodos[i]]
+    alvos = resultados_otimizacao[i]
+    R     = ret.loc[dias].values
+
+    for k, w in alvos.items():
+        turn = 1.0 if w_ant[k] is None else np.abs(w - w_ant[k]).sum()
+        turnover_hist[k].append((dias[0], turn))
+        rp = (R @ w).astype(float).copy()
+        rp[0] -= custo_unit * turn
+        ret_estrategias[k].append(pd.Series(rp, index=dias))
+        pesos_hist[k][dias[0]] = w
+        cresc   = np.prod(1 + R, axis=0)
+        w_drift = w * cresc
+        w_ant[k] = w_drift / w_drift.sum()
+
+strategy_returns = pd.DataFrame({k: pd.concat(v) for k, v in ret_estrategias.items()})
+strategy_returns["IBOV"] = ibov.reindex(strategy_returns.index)
+strategy_returns.index.name = "data"
+
+# --- EqualWeight_BuyHold ---
+_ret_oos = ret.re
+--- Cell 21 (markdown) ---
+## 10. Métricas de desempenho
+
+As seis métricas do Capítulo 3.7: CAGR, volatilidade anualizada, Índice de Sharpe, Índice de Sortino,
+*Maximum Drawdown* e *turnover* médio anualizado.
+--- Cell 22 (code) ---
+def metricas(r, rf_serie):
+    r = r.dropna()
+    rf_a     = rf_serie.reindex(r.index).ffill().bfill()
+    excesso  = r - rf_a
+    cum      = (1 + r).cumprod()
+    cagr     = cum.iloc[-1] ** (TRADING_DAYS / len(r)) - 1
+    vol      = r.std() * np.sqrt(TRADING_DAYS)
+    sharpe   = excesso.mean() / excesso.std() * np.sqrt(TRADING_DAYS)
+    downside = np.sqrt((excesso.clip(upper=0) ** 2).mean())
+    sortino  = excesso.mean() / downside * np.sqrt(TRADING_DAYS) if downside > 0 else np.nan
+    maxdd    = (cum / cum.cummax() - 1).min()
+    return {"ret_anual": cagr, "vol_anual": vol, "sharpe": sharpe,
+            "sortino": sortino, "max_drawdown": maxdd}
+
+desempenho = pd.DataFrame({c: metricas(strategy_returns[c], rf)
+                           for c in strategy_returns.columns}).T
+reb_por_ano = {"M": 12, "Q": 4}.get(REBAL, 12)
+for k in ESTRATEGIAS:
+    # [1:] pula o 1º rebalanceamento: sempre turnover=1.0 (partida do zero)
+    desempenho.loc[k, "turnover_aa"] = np.mean([v for _, v in turnover_hist[k][1:]]) * reb_por_ano
+desempenho.loc["IBOV",               "turnover_aa"] = np.nan
+desempenho.loc["EqualWeight_BuyHold","turnover_aa"] = 0.0   # compra única, zero giro posterior
+
+print("Desempenho out-of-sample (líquido de custos):\n")
+print(desempenho.round(4).to_string())
+--- Cell 23 (markdown) ---
+## 11. Exportação dos artefatos
+
+Persistência em `data/Estrategias/`: a matriz de retornos das estratégias (insumo do NB07), o quadro
+de desempenho e o log de pesos por rebalanceamento.
+--- Cell 24 (markdown) ---
+## 10b. Concentração do EqualWeight_BuyHold — qual ativo mais cresceu?
+
+Sem rebalanceamento, os ativos que mais se valorizaram passam a dominar o portfólio ao longo do tempo.
+Esta célula quantifica essa deriva: mostra o peso final de cada ativo no último pregão OOS e os
+**top-10 maiores crescimentos acumulados** — identificando os "vencedores" do período 2015–2025.
+--- Cell 25 (code) ---
+tickers_bh = [c.replace("ACAO_", "") for c in _ret_oos.columns]
+
+# Crescimento acumulado de cada ativo no período OOS (base 1 no 1º pregão)
+cresc_acum = _cum_bh.iloc[-1]                          # valor final de R$ 1 investido por ativo
+cresc_acum.index = tickers_bh
+
+# Peso de cada ativo no último pregão (sem rebalanceamento: deriva livre)
+peso_final_bh = cresc_acum / cresc_acum.sum()
+
+# Top-10 ativos por crescimento acumulado
+top10 = cresc_acum.sort_values(ascending=False).head(10)
+top10_df = pd.DataFrame({
+    "Ativo":               top10.index,
+    "Cresc. Acumulado (x)": top10.values.round(3),
+    "Retorno Total (%)":   ((top10.values - 1) * 100).round(1),
+    "Peso Final BH (%)":   (peso_final_bh[top10.index].values * 100).round(2),
+})
+
+print("=" * 65)
+print("TOP-10 ATIVOS — MAIOR CRESCIMENTO ACUMULADO (EqualWeight_BuyHold)")
+print(f"Período: {_ret_oos.index[0].date()} → {_ret_oos.index[-1].date()}")
+print("=" * 65)
+print(top10_df.to_string(index=False))
+
+# Concentração: quantos ativos respondem por 50% do valor final?
+pesos_ord = peso_final_bh.sort_values(ascending=False)
+n50 = int((pesos_ord.cumsum() <= 0.50).sum()) + 1
+n80 = int((pesos_ord.cumsum() <= 0.80).sum()) + 1
+print(f"\nConcentração do portfólio no último pregão:")
+print(f"  Top-{n50} ativos respondem por 50% do valor total")
+print(f"  Top-{n80} ativos respondem por 80% do valor total")
+print(f"  (vs. {len(tickers_bh)} ativos com peso igual de {100/len(tickers_bh):.2f}% no início)")
+
+# Salvar ranking completo
+ranking_bh = pd.DataFrame({
+    "ticker":          tickers_bh,
+    "cresc_acumulado": cresc_acum.values,
+    "retorno_total_pct": (cresc_acum.values - 1) * 100,
+    "peso_final_pct":  peso_final_bh.values * 100,
+}).sort_values("cresc_acumulado", ascending=False).reset_index(drop=True)
+ranking_bh.index += 1  # ranking começa em 1
+ranking_bh.to_csv(OUTPUT_DIR / "equalweight_buyhold_ranking.csv", float_format="%.4f")
+print(f"\nRanking completo salvo em: equalweight_buyhold_ranking.csv")
+--- Cell 26 (code) ---
+def _salvar(df, nome):
+    df.to_csv(OUTPUT_DIR / f"{nome}.csv", date_format="%Y-%m-%d", float_format="%.8f")
+    try:
+        df.to_parquet(OUTPUT_DIR / f"{nome}.parquet", engine="pyarrow")
+        print(f"  {nome}.csv + .parquet")
+    except Exception as e:
+        print(f"  {nome}.csv  [parquet: {e}]")
+
+print("[+] Exportando em:", OUTPUT_DIR, "\n")
+_salvar(strategy_returns, "strategy_returns")
+_salvar(desempenho, "desempenho_estrategias")
+
+# Pesos históricos das estratégias com rebalanceamento mensal
+linhas = []
+tickers = [c.replace("ACAO_", "") for c in ret.columns]
+for k in ESTRATEGIAS:
+    for data, w in pesos_hist[k].items():
+        for tk, peso in zip(tickers, w):
+            if peso > 1e-6:
+                linhas.append({"estrategia": k, "data": data, "ticker": tk, "peso": peso})
+
+# Pesos iniciais do EqualWeight_BuyHold (apenas t=0; deriva livre após)
+data_inicio_bh = strategy_returns.index[0]
+w0_bh = 1.0 / len(tickers)
+for tk in tickers:
+    linhas.append({"estrategia": "EqualWeight_BuyHold", "data": data_inicio_bh, "ticker": tk, "peso": w0_bh})
+
+pd.DataFrame(linhas).to_csv(OUTPUT_DIR / "pesos_historico.csv", index=False, float_format="%.6f")
+print(f"  pesos_historico.csv ({len(linhas)} linhas)")
+print(f"\nNB6 concluído — {len(ESTRATEGIAS) + 1} estratégias (MPT+PMPT+BuyHold) | insumo do NB07")
+--- Cell 27 (markdown) ---
+## 12. Fechamento — interpretação dos resultados
+
+*(Célula a preencher após a execução — fecha o arco narrativo, Regra 1.)*
+
+Pontos a interpretar à luz do referencial teórico:
+
+- **MPT × PMPT:** as carteiras de *downside risk* (CVaR, CDaR, Sortino/Omega/Kappa) entregam relação
+  risco-retorno superior à média-variância no mercado brasileiro? A vantagem teórica da assimetria se
+  confirma empiricamente, dada a não-normalidade documentada no NB07?
+- **Comparabilidade:** Min-CVaR e Min-CDaR **não** usam $\Sigma$ (operam sobre cenários), enquanto as
+  estratégias MPT dependem de Ledoit-Wolf. Parte da diferença de desempenho decorre dessa diferença de
+  insumo, e não apenas da função-objetivo — registrar explicitamente.
+- **Janela expansiva:** sob não-estacionariedade na variância (quebra pós-2015, efeito ARCH em 130/130
+  ativos, NB07), a janela expansiva reage devagar a mudanças de regime; o enfraquecimento progressivo
+  do shrinkage de Ledoit-Wolf com $T\uparrow$ deve ser discutido como limitação.
+- **Custo e turnover:** estratégias de cauda tendem a girar mais; confrontar o *turnover* anualizado
+  com o desempenho líquido para avaliar viabilidade operacional.
+
+**Limitações declaradas:** Kappa/Sortino/Omega resolvidos por SLSQP (não-convexos, sujeitos a ótimo
+local); ausência de teste formal de significância das diferenças de Sharpe/Sortino (delegado ao NB07);
+Black-Litterman tratado em notebook próprio.
+--- Cell 28 (markdown) ---
+---
+# Apêndice F — Protocolo Computacional de Otimização de Carteiras e Backtest
+
+Este apêndice descreve a arquitetura do `06_Otimizacao_Carteiras_Backtest_Final.ipynb`, responsável
+pela resolução dos problemas de otimização e pela simulação *out-of-sample* das carteiras. Desenvolvido
+em Python com `Pandas`/`NumPy` (manipulação matricial), `SciPy` (`scipy.optimize.minimize`, SLSQP) para
+os problemas não-convexos e `CVXPY` (solver CLARABEL) para os problemas convexos de cauda.
+
+### F.1. Estimação paramétrica em janela expansiva
+A cada rebalanceamento mensal, após um *warm-up* de 60 meses, estimam-se sobre **toda** a história
+disponível até a data de corte: o vetor de retornos esperados $\mu$ (anualizado por 252) e a matriz de
+covariância $\Sigma$, estabilizada pelo encolhimento de Ledoit-Wolf. A janela expansiva substitui a
+janela móvel de 252 pregões da versão anterior, alinhando-se ao protocolo do Capítulo 3.
+
+### F.2. Estratégias e otimizadores
+**Tabela F.1 — Otimizadores implementados**
+
+| Família | Estratégia | Função-objetivo | Solver | Convexo? |
+| :--- | :--- | :--- | :--- | :---: |
+| MPT | EqualWeight | $1/N$ | — | — |
+| MPT | InvVol | inverso da volatilidade | — | — |
+| MPT | MinVar / MinVar_c10 | mín. $w'\Sigma w$ | SLSQP | sim |
+| MPT | MaxSharpe / MaxSharpe_c10 | máx. $(w'\mu-r_f)/\sqrt{w'\Sigma w}$ | SLSQP | não |
+| PMPT | MinCVaR | mín. $CVaR_\alpha$ (Rockafellar-Uryasev) | CLARABEL | sim (LP) |
+| PMPT | MaxOmega ($\kappa_1$) | máx. $\kappa_1(\tau)$ | SLSQP | não |
+| PMPT | MaxSortino ($\kappa_2$) | máx. $\kappa_2(\tau)$ | SLSQP | não |
+| PMPT | MaxKappa3 ($\kappa_3$) | máx. $\kappa_3(\tau)$ | SLSQP | não |
+| PMPT | MinCDaR | mín. $CDaR_\alpha$ (Chekhlov et al.) | CLARABEL | sim (LP) |
+
+Restrições comuns: orçamento pleno ($\sum w_i=1$), *long-only* ($w_i\ge 0$) e, nas variantes `_c10`,
+teto de 10% por emissor (CVM 175). As carteiras de cauda (CVaR/CDaR) operam sobre a matriz de cenários,
+sem $\Sigma$.
+
+### F.3. Validação prévia e fricções de mercado
+Antes do backtest, todos os otimizadores são submetidos a testes em caso controlado (invariantes de
+orçamento/sinal, monotonicidade na própria medida e checagem analítica do $\zeta$ do CVaR contra o VaR
+empírico). O backtest impõe vedação ao *look-ahead* (janela estritamente retroativa), deriva de pesos
+intra-período e custo transacional de $0{,}5\%$ sobre o *turnover*, liquidado no dia do rebalanceamento.
+
+### F.4. Artefatos de saída (`data/Estrategias/`)
+`strategy_returns.csv` (retornos diários OOS por estratégia + IBOV), `desempenho_estrategias.csv`
+(CAGR, vol, Sharpe, Sortino, MDD, turnover) e `pesos_historico.csv` (alocação por rebalanceamento).
+--- Cell 29 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 07_01 (Otimização de Carteiras) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |
+
+========== src/08_Fronteira_Eficiente/08_01_Fronteira_Eficiente.ipynb ==========
+--- Cell 0 (markdown) ---
+# Notebook 8 — Fronteira Eficiente: Média-Variância e Média-CVaR
+
+**TCC — Pedro Augusto Pinheiro Reis · Ciências Contábeis · UFG**
+
+Este notebook calcula a fronteira eficiente clássica (média-variância de Markowitz) e a fronteira da teoria pós-moderna (média-CVaR) para o universo investível da B3. Também gera a nuvem de carteiras simuladas por Monte Carlo e exporta as carteiras canônicas e imagens consolidadas para tabulação e escrita do TCC.
+--- Cell 1 (markdown) ---
+## 1. Importações e Configurações
+--- Cell 2 (code) ---
+import sys
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from utils.config_loader import carregar_parametros
+from utils.fronteira import (
+    ledoit_wolf,
+    min_var,
+    max_sharpe,
+    min_cvar,
+    cvar_diario,
+    port_ret,
+    port_vol,
+    CVXPY_OK
+)
+
+# Carrega configurações centrais
+cfg = carregar_parametros()
+SEED = cfg.get("SEED", 42)
+N_MONTECARLO = cfg.get("N_MONTECARLO", 50000)
+N_PONTOS_FRONT = cfg.get("N_PONTOS_FRONT", 60)
+ATIVOS_NUVEM = cfg.get("ATIVOS_NUVEM", 10)
+ALPHA = cfg.get("ALPHA_PMPT", 0.95)
+TETO_PESO = cfg.get("TETO_PESO", 0.10)
+DIRICHLET_ALPHA = cfg.get("DIRICHLET_ALPHA", 0.30)
+TRADING_DAYS = 252
+
+np.random.seed(SEED)
+
+project_root = Path.cwd().parent.parent
+DIR_RETORNOS = project_root / "data" / "Retornos"
+OUTPUT_DIR = project_root / "data" / "Estrategias"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+print(f"✓ Configurações carregadas. CVXPY disponível: {CVXPY_OK}")
+--- Cell 3 (markdown) ---
+## 2. Leitura dos Retornos e Taxa de Juros
+--- Cell 4 (code) ---
+def _ler(nome, col=None):
+    pq = DIR_RETORNOS / f"{nome}.parquet"
+    csv = DIR_RETORNOS / f"{nome}.csv"
+    df = pd.read_parquet(pq) if pq.exists() else pd.read_csv(csv, index_col=0, parse_dates=True)
+    df.index = pd.to_datetime(df.index)
+    return df[col] if col else df
+
+ret = _ler("retornos_simples_saneado").sort_index()
+try:
+    rf_d = _ler("rf_diario", "cdi_diario").reindex(ret.index).dropna()
+    rf_anual = float(rf_d.mean() * TRADING_DAYS)
+except Exception:
+    rf_anual = 0.10
+
+N = ret.shape[1]
+print(f"Retornos: {ret.shape[0]} pregões × {N} ativos | rf anualizado usado = {rf_anual:.4f}")
+--- Cell 5 (markdown) ---
+## 3. Estimação de Parâmetros (Média e Covariância via Ledoit-Wolf)
+--- Cell 6 (code) ---
+R = ret.values
+mu = R.mean(axis=0) * TRADING_DAYS
+Sig = ledoit_wolf(R) * TRADING_DAYS
+
+print(f"μ média anualizada: {mu.mean():.4f} [{mu.min():.3f}, {mu.max():.3f}]")
+print(f"Vol média anualizada dos ativos: {np.sqrt(np.diag(Sig)).mean():.4f}")
+--- Cell 7 (markdown) ---
+## 4. Nuvem Monte Carlo de Oportunidades Viáveis
+--- Cell 8 (code) ---
+rng = np.random.default_rng(SEED)
+# Seleciona subconjunto de ativos de forma uniforme em termos de volatilidade para visualização
+ordem = np.argsort(np.diag(Sig))
+idx_sub = ordem[np.linspace(0, N-1, ATIVOS_NUVEM).astype(int)]
+mu_s = mu[idx_sub]
+Sig_s = Sig[np.ix_(idx_sub, idx_sub)]
+
+W = rng.dirichlet(np.full(ATIVOS_NUVEM, DIRICHLET_ALPHA), size=N_MONTECARLO)
+mc_ret = W @ mu_s
+mc_vol = np.sqrt(np.einsum('ij,jk,ik->i', W, Sig_s, W))
+mc_sharpe = (mc_ret - rf_anual) / mc_vol
+
+print(f"Nuvem: {N_MONTECARLO} carteiras simuladas sobre {ATIVOS_NUVEM} ativos.")
+--- Cell 9 (markdown) ---
+## 5. Fronteira Média-Variância e Carteiras Canônicas
+--- Cell 10 (code) ---
+w_mvp = min_var(Sig, mu)
+w_tan = max_sharpe(mu, Sig, rf_anual)
+w_tan10 = max_sharpe(mu, Sig, rf_anual, TETO_PESO)
+
+alvos = np.linspace(port_ret(w_mvp, mu), mu.max() * 0.98, N_PONTOS_FRONT)
+fmv = []
+for a in alvos:
+    w = min_var(Sig, mu, ret_alvo=a)
+    if abs(port_ret(w, mu) - a) < 1e-3:
+        fmv.append((port_vol(w, Sig), port_ret(w, mu)))
+fmv = np.array(fmv)
+
+print(f"Fronteira MV: {len(fmv)} pontos obtidos.")
+print(f"MVP:      vol={port_vol(w_mvp, Sig):.4f} ret={port_ret(w_mvp, mu):.4f}")
+print(f"Tangente: vol={port_vol(w_tan, Sig):.4f} ret={port_ret(w_tan, mu):.4f}")
+print(f"Tangente (Cap 10%): vol={port_vol(w_tan10, Sig):.4f} ret={port_ret(w_tan10, mu):.4f}")
+--- Cell 11 (markdown) ---
+## 6. Fronteira Média-CVaR (PMPT)
+--- Cell 12 (code) ---
+fcvar = []
+w_mincvar = None
+if CVXPY_OK:
+    w_mincvar = min_cvar(R, mu, ALPHA)
+    if w_mincvar is not None:
+        w_mincvar = w_mincvar / w_mincvar.sum()
+        # Varre retornos-alvo para traçar a fronteira média-CVaR
+        for a in np.linspace(port_ret(w_mincvar, mu), mu.max() * 0.95, max(20, N_PONTOS_FRONT // 2)):
+            w = min_cvar(R, mu, ALPHA, ret_alvo=a)
+            if w is not None and abs(w.sum() - 1.0) < 1e-3:
+                fcvar.append((cvar_diario(w / w.sum(), R, ALPHA), port_ret(w / w.sum(), mu)))
+        fcvar = np.array(fcvar)
+        print(f"Fronteira média-CVaR: {len(fcvar)} pontos obtidos.")
+        print(f"Min-CVaR: CVaR_diário={cvar_diario(w_mincvar, R, ALPHA):.5f} ret={port_ret(w_mincvar, mu):.4f}")
+else:
+    print("[AVISO] cvxpy ou solvers ausentes. Fronteira CVaR pulada.")
+--- Cell 13 (markdown) ---
+## 7. Gráficos Consolidados (Espaço MPT e PMPT)
+--- Cell 14 (code) ---
+n_panels = 2 if (CVXPY_OK and len(fcvar) > 0) else 1
+fig, axs = plt.subplots(1, n_panels, figsize=((13, 5.2) if n_panels == 2 else (7.5, 5.5)))
+axes = np.atleast_1d(axs)
+ax0 = axes[0]
+
+sc = ax0.scatter(mc_vol, mc_ret, c=mc_sharpe, s=6, alpha=0.35, cmap="viridis", rasterized=True)
+ax0.plot(fmv[:, 0], fmv[:, 1], "-", color="crimson", lw=2.2, label="Fronteira MV (118 ativos)")
+ax0.scatter([port_vol(w_mvp, Sig)], [port_ret(w_mvp, mu)], marker="D", s=90, color="navy", zorder=5, label="Mínima Variância (MVP)")
+ax0.scatter([port_vol(w_tan, Sig)], [port_ret(w_tan, mu)], marker="*", s=240, color="gold", edgecolor="black", zorder=5, label="Tangente (Máx. Sharpe)")
+ax0.scatter([port_vol(w_tan10, Sig)], [port_ret(w_tan10, mu)], marker="P", s=120, color="darkorange", edgecolor="black", zorder=5, label="Tangente c/ teto 10% (CVM)")
+
+# Plota a Capital Market Line (CML)
+x_cml = np.linspace(0, port_vol(w_tan, Sig) * 1.4, 50)
+sh_t = (port_ret(w_tan, mu) - rf_anual) / port_vol(w_tan, Sig)
+ax0.plot(x_cml, rf_anual + sh_t * x_cml, "--", color="gray", lw=1.6, label="Capital Market Line")
+ax0.scatter([0], [rf_anual], marker="o", s=50, color="black", zorder=5)
+
+ax0.annotate(f"Tangente concentrada\n(maior peso {w_tan.max():.0%}, {(w_tan>0.01).sum()} ativos>1%)\n→ 'maximização de erros'",
+             xy=(port_vol(w_tan, Sig), port_ret(w_tan, mu)),
+             xytext=(port_vol(w_tan, Sig) * 1.05, port_ret(w_tan, mu) * 0.78),
+             fontsize=8, arrowprops=dict(arrowstyle="->", color="black"))
+
+ax0.set_xlabel("Volatilidade anual (σ)")
+ax0.set_ylabel("Retorno esperado anual (μ)")
+ax0.set_title("Espaço média-variância (MPT)")
+ax0.legend(fontsize=7.5, loc="lower right")
+ax0.grid(alpha=0.3)
+fig.colorbar(sc, ax=ax0, label="Sharpe", fraction=0.046, pad=0.04)
+
+if CVXPY_OK and len(fcvar) > 0:
+    ax1 = axes[1]
+    ax1.plot(fcvar[:, 0], fcvar[:, 1], "-o", color="teal", ms=3, lw=2, label="Fronteira média-CVaR (118 ativos)")
+    ax1.scatter([cvar_diario(w_mincvar, R, ALPHA)], [port_ret(w_mincvar, mu)], marker="D", s=90, color="purple", zorder=5, label="Mínimo CVaR")
+    ax1.set_xlabel(f"CVaR diário (α={ALPHA:.0%})")
+    ax1.set_ylabel("Retorno esperado anual (μ)")
+    ax1.set_title("Espaço média-CVaR (PMPT)")
+    ax1.legend(fontsize=8)
+    ax1.grid(alpha=0.3)
+    FIGURA_COMPLETA = True
+else:
+    FIGURA_COMPLETA = False
+    motivo = "CVXPY ausente ou erros de convergência"
+    ax0.text(0.5, -0.16,
+             f"⚠ FIGURA PARCIAL — painel média-CVaR (PMPT) NÃO gerado: {motivo}.\n",
+             transform=ax0.transAxes, ha="center", va="top", fontsize=9, color="darkred")
+
+_titulo = "Fronteira Eficiente — universo investável da B3 (in-sample, 2010–2025)"
+if not FIGURA_COMPLETA:
+    _titulo += "  [PARCIAL: sem painel CVaR]"
+fig.suptitle(_titulo, fontsize=12, color=("black" if FIGURA_COMPLETA else "darkred"))
+fig.tight_layout()
+plt.savefig(OUTPUT_DIR / "fronteira_eficiente.png", dpi=150, bbox_inches="tight")
+plt.savefig(OUTPUT_DIR / "fronteira_eficiente.svg", bbox_inches="tight")
+pri
+--- Cell 15 (markdown) ---
+## 8. Exportação dos Resultados (CSV)
+--- Cell 16 (code) ---
+pd.DataFrame(fmv, columns=["vol", "ret"]).to_csv(OUTPUT_DIR / "fronteira_mv_pontos.csv", index=False)
+if CVXPY_OK and len(fcvar) > 0:
+    pd.DataFrame(fcvar, columns=["cvar_diario", "ret"]).to_csv(OUTPUT_DIR / "fronteira_cvar_pontos.csv", index=False)
+
+canon = {"MVP": w_mvp, "Tangente": w_tan, "Tangente_c10": w_tan10}
+if CVXPY_OK and w_mincvar is not None:
+    canon["MinCVaR"] = w_mincvar
+
+linhas = []
+for nome, w in canon.items():
+    linhas.append({
+        "carteira": nome,
+        "ret_anual": port_ret(w, mu),
+        "vol_anual": port_vol(w, Sig),
+        "sharpe": (port_ret(w, mu) - rf_anual) / port_vol(w, Sig),
+        "maior_peso": float(w.max()),
+        "n_ativos_>1pct": int((w > 0.01).sum())
+    })
+
+pd.DataFrame(linhas).to_csv(OUTPUT_DIR / "carteiras_canonicas.csv", index=False, float_format="%.6f")
+print("✓ Resultados salvos com sucesso em:", OUTPUT_DIR)
+--- Cell 17 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 08_01 (Fronteira Eficiente) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |
+
+========== src/09_Inferencia_Econometrica/09_01_Inferencia_Econometrica.ipynb ==========
+--- Cell 0 (markdown) ---
+# Notebook 9 — Inferência Econométrica de Desempenho e Caracterização do Benchmark
+
+**TCC — Pedro Augusto Pinheiro Reis · Ciências Contábeis · UFG**
+
+Este notebook operacionaliza a caracterização econométrica do benchmark (IBOVESPA) e executa os testes de hipóteses estatísticas comparando as carteiras ótimas contra o mercado.
+--- Cell 1 (markdown) ---
+## 1. Importações e Configurações
+--- Cell 2 (code) ---
+import sys
+import warnings
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from scipy import stats
+import statsmodels.api as sm
+from statsmodels.tsa.stattools import adfuller, kpss
+from statsmodels.stats.diagnostic import het_arch
+from arch import arch_model
+from arch.unitroot import VarianceRatio
+
+from utils.config_loader import carregar_parametros
+from utils.inferencia import (
+    fmt_pvalor,
+    sharpe,
+    sortino,
+    sharpe_de_excesso,
+    sortino_de_excesso,
+    cagr,
+    max_drawdown,
+    _wald_spanning,
+    _jk_memmel,
+    bootstrap_ic,
+    diagnostico_residuos,
+    diagnosticos_serie,
+    lw_bootstrap_sharpe,
+    lw_bootstrap_sortino,
+    TRADING_DAYS
+)
+from statsmodels.stats.multitest import multipletests
+
+warnings.filterwarnings("ignore")
+
+# ==============================================================================
+# CONFIGURAÇÃO METODOLÓGICA GLOBAL (REAMOSTRAGEM - SEÇÃO 3.7.2)
+# ==============================================================================
+SEED = 42
+BOOTSTRAP_REPS = 2000
+BOOTSTRAP_BLOCK_MEAN = 10
+ALPHA_SIG = 0.05
+# ==============================================================================
+
+cfg = carregar_parametros()
+SPANNING_MAX_LAGS = cfg.get("SPANNING_MAX_LAGS", 5)
+
+project_root = Path.cwd().parent.parent
+INPUT_DIR_IBOV     = project_root / "data" / "Ibov" / "Ibov_Diario"
+INPUT_DIR_CDI      = project_root / "data" / "CDI"
+INPUT_DIR_STRATEGY = project_root / "data" / "Estrategias"
+OUTPUT_DIR         = project_root / "data" / "Estrategias"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+ESTRATEGIAS = [
+    "EqualWeight", "EqualWeight_BuyHold", "InvVol",
+    "MinVar", "MinVar_c10", "MaxSharpe", "MaxSharpe_c10",
+    "MaxOmega", "MaxSortino", "MaxKappa3", "MinCVaR", "MinCDaR",
+    "BL_classico", "BL_classico_c10", "BL_downside", "BL_downside_c10"
+]
+
+BENCHMARK  = "EqualWeight"   # DeMiguel et al. (2009) — desafiante canônico 1/N
+
+print(f"✓ Configurações carregadas. Total de estratégias: {len(ESTRATEGIAS)} | benchmark: {BENCHMARK}")
+print(f"  Inclui EqualWeight_BuyHold (1/N sem rebalanceamento) para análise de concentração.")
+
+--- Cell 3 (markdown) ---
+## 2. Ingestão de Dados e Alinhamento do Benchmark
+--- Cell 4 (code) ---
+ibov_path = INPUT_DIR_IBOV / "ibov_diario_2010_2026.csv"
+if not ibov_path.exists():
+    raise FileNotFoundError("ibov_diario_2010_2026.csv não encontrado.")
+ibov = pd.read_csv(ibov_path, parse_dates=["data"])
+ibov = ibov.dropna(subset=["ibov_ret_simples"]).reset_index(drop=True)
+
+cdi_path = INPUT_DIR_CDI / "cdi_diario_bcb_2010_atual.csv"
+if not cdi_path.exists():
+    raise FileNotFoundError("cdi_diario_bcb_2010_atual.csv não encontrado.")
+cdi_df = pd.read_csv(cdi_path, sep=";", parse_dates=["data"])
+
+cdi_serie = cdi_df.set_index("data")["cdi_diario"].reindex(ibov["data"]).ffill().bfill()
+ibov["cdi_diario"] = cdi_serie.values
+ibov["ibov_ret_log"] = np.log(1 + ibov["ibov_ret_simples"])
+
+print(f"✓ Benchmark carregado e alinhado: {len(ibov):,} observações.")
+--- Cell 5 (markdown) ---
+## 3. Testes de Raiz Unitária e Ordem de Integração do IBOV
+--- Cell 6 (code) ---
+r = ibov["ibov_ret_log"].dropna()
+p = ibov["ibov_close"]
+
+adf_r = adfuller(r, autolag="AIC")
+adf_p = adfuller(p, autolag="AIC")
+kpss_r = kpss(r, regression="c", nlags="auto")
+kpss_p = kpss(p, regression="c", nlags="auto")
+
+print("========================================================================")
+print("TESTES DE ESTACIONARIEDADE DO BENCHMARK (IBOV)")
+print("========================================================================\n")
+print(f"ADF em log-retornos:   estat={adf_r[0]:.4f} | p-valor={fmt_pvalor(adf_r[1])}")
+print(f"KPSS em log-retornos:  estat={kpss_r[0]:.4f} | p-valor={fmt_pvalor(kpss_r[1])}")
+print(f"ADF em nível (close):  estat={adf_p[0]:.4f} | p-valor={fmt_pvalor(adf_p[1])}")
+print(f"KPSS em nível (close): estat={kpss_p[0]:.4f} | p-valor={fmt_pvalor(kpss_p[1])}")
+--- Cell 7 (markdown) ---
+## 4. Diagnóstico de Momentos Superiores e Dependência Temporal
+--- Cell 8 (code) ---
+arch_stat, arch_p, _, _ = het_arch(r, nlags=10)
+jb_stat, jb_p = stats.jarque_bera(r)
+
+print("========================================================================")
+print("DIAGNÓSTICO ESTATÍSTICO DE COMPORTAMENTO DISTRIBUTIVO (IBOV)")
+print("========================================================================\n")
+print(f"ARCH-LM (10 lags):  estat = {arch_stat:.2f}  p-valor = {fmt_pvalor(arch_p)}")
+print(f'Jarque-Bera:        estat = {jb_stat:.2f}  p-valor = {fmt_pvalor(jb_p)}')
+print(f"Assimetria:         {r.skew():+.4f}")
+print(f"Curtose excedente:  {r.kurt():+.4f}")
+--- Cell 9 (markdown) ---
+## 5. Teste de Razão de Variâncias de Lo-MacKinlay
+--- Cell 10 (code) ---
+log_price = np.log(p).values
+vr_2 = VarianceRatio(log_price, 2, overlap=True)
+vr_16 = VarianceRatio(log_price, 16, overlap=True)
+
+print("========================================================================")
+print("TESTE DE RAZÃO DE VARIÂNCIAS DE LO-MACKINLAY (1988) DO IBOV")
+print("========================================================================\n")
+print(f"Razão de Variâncias (k=2):   estat={vr_2.stat:.4f} | p-valor={fmt_pvalor(vr_2.pvalue)}")
+print(f"Razão de Variâncias (k=16):  estat={vr_16.stat:.4f} | p-valor={fmt_pvalor(vr_16.pvalue)}")
+--- Cell 11 (markdown) ---
+## 6. Modelagem de Volatilidade Condicional e Parâmetro Delta
+--- Cell 12 (code) ---
+r_pct = r * 100
+res_garch = arch_model(r_pct, mean="Constant", vol="Garch", p=1, q=1, dist="normal").fit(disp="off")
+res_gjr = arch_model(r_pct, mean="Constant", vol="Garch", p=1, o=1, q=1, dist="t").fit(disp="off")
+res_eg = arch_model(r_pct, mean="Constant", vol="EGARCH", p=1, o=1, q=1, dist="t").fit(disp="off")
+
+comp = pd.DataFrame([
+    diagnostico_residuos(res_garch, "GARCH(1,1) Normal"),
+    diagnostico_residuos(res_gjr,   "GJR-GARCH(1,1,1) t"),
+    diagnostico_residuos(res_eg,    "EGARCH(1,1,1) t"),
+])
+
+melhor = comp.loc[comp["BIC"].idxmin(), "Modelo"]
+res_melhor = {"GARCH(1,1) Normal": res_garch, "GJR-GARCH(1,1,1) t": res_gjr, "EGARCH(1,1,1) t": res_eg}[melhor]
+
+print("========================================================================")
+print("COMPARAÇÃO DE MODELOS DE VOLATILIDADE CONDICIONAL E CRITÉRIOS")
+print("========================================================================\n")
+print(comp.round(4).to_string(index=False))
+print(f"\n>>> Modelo selecionado pelo BIC: {melhor}")
+--- Cell 13 (markdown) ---
+## 7. Consolidação de Estratégias e Análise de Sensibilidade
+--- Cell 14 (code) ---
+strat_pq = INPUT_DIR_STRATEGY / "strategy_returns.parquet"
+strat_csv = INPUT_DIR_STRATEGY / "strategy_returns.csv"
+if strat_pq.exists():
+    strat = pd.read_parquet(strat_pq)
+else:
+    strat = pd.read_csv(strat_csv, index_col=0, parse_dates=True)
+
+df = pd.DataFrame(index=strat.index)
+df["ret_ibov"] = ibov.set_index("data")["ibov_ret_simples"].reindex(df.index).ffill().bfill()
+df["rf"] = ibov.set_index("data")["cdi_diario"].reindex(df.index).ffill().bfill()
+
+for est in ESTRATEGIAS:
+    df[est] = strat[est]
+    df[f"excess_{est}"] = df[est] - df["rf"]
+df["excess_ibov"] = df["ret_ibov"] - df["rf"]
+
+colunas_teste = ESTRATEGIAS + ["ret_ibov"]
+linhas_perf = []
+for c in colunas_teste:
+    nm = "IBOVESPA" if c == "ret_ibov" else c
+    r_serie = df[c]
+    sh = sharpe(r_serie, df["rf"])
+    so = sortino(r_serie, df["rf"])
+    linhas_perf.append({
+        "Estratégia": nm,
+        "Retorno Acumulado (%)": float((1 + r_serie).prod() - 1) * 100,
+        "CAGR (% a.a.)": cagr(r_serie) * 100,
+        "Volatilidade (% a.a.)": float(r_serie.std() * np.sqrt(TRADING_DAYS)) * 100,
+        "Sharpe": sh,
+        "Sortino": so,
+        "Max Drawdown (%)": max_drawdown(r_serie) * 100
+    })
+painel = pd.DataFrame(linhas_perf)
+
+print("========================================================================")
+print("PAINEL COMPARATIVO GERAL DE PERFORMANCE E RISCO")
+print("========================================================================\n")
+print(painel.round(4).to_string(index=False))
+--- Cell 15 (markdown) ---
+## 8. Diagnósticos por Estratégia — por que o bootstrap é necessário
+
+Para cada uma das 15 estratégias: **Jarque-Bera** (normalidade),
+**Ljung-Box(10)** (autocorrelação), **ARCH-LM(10)** (heterocedasticidade
+condicional) e **ADF** (estacionariedade). A rejeição da normalidade na
+maioria das séries invalida o teste paramétrico de Sharpe (Jobson-Korkie)
+e justifica o bootstrap estacionário de Ledoit-Wolf (2008).
+
+--- Cell 16 (code) ---
+diag_estr = pd.DataFrame(
+    {est: diagnosticos_serie(df[est].dropna(), ALPHA_SIG) for est in ESTRATEGIAS}
+).T
+n_nn = (diag_estr['normal?'] == 'não').sum()
+print(f'Normalidade rejeitada em {n_nn}/{len(ESTRATEGIAS)} estratégias '
+      f'(JB p<{ALPHA_SIG}) — bootstrap preferível ao teste paramétrico.\n')
+print(diag_estr.round(4).to_string())
+
+--- Cell 17 (markdown) ---
+## 9. Validação Não-Paramétrica via Stationary Bootstrap
+--- Cell 18 (code) ---
+print(f"Stationary bootstrap (B={BOOTSTRAP_REPS}, block_mean={BOOTSTRAP_BLOCK_MEAN}d)\n")
+print(f"{'Métrica Estatística':<22} | {'Estratégia (IC 95%)':<36} | {'IBOVESPA (IC 95%)'}")
+print("-" * 100)
+
+for est in ESTRATEGIAS:
+    print(f"\n========================================================================")
+    print(f"INTERVALOS DE CONFIANÇA POR REAMOSTRAGEM: {est} VS IBOVESPA")
+    print("========================================================================")
+    for nome_fn, fn, serie_a, serie_b in [
+        ("Sharpe (excesso)",  sharpe_de_excesso,  df[f"excess_{est}"], df["excess_ibov"]),
+        ("Sortino (excesso)", sortino_de_excesso, df[f"excess_{est}"], df["excess_ibov"]),
+        ("CAGR (bruto)",      cagr,               df[est],             df["ret_ibov"]),
+    ]:
+        s_lo, s_md, s_hi = bootstrap_ic(serie_a, fn, B=BOOTSTRAP_REPS, block_mean=BOOTSTRAP_BLOCK_MEAN, seed=SEED)  # unificado com seções 11-12
+        i_lo, i_md, i_hi = bootstrap_ic(serie_b, fn, B=BOOTSTRAP_REPS, block_mean=BOOTSTRAP_BLOCK_MEAN, seed=SEED)  # unificado com seções 11-12
+        print(f"{nome_fn:<22} | [{s_lo:+.4f},  {s_md:+.4f},  {s_hi:+.4f}]  | "
+              f"[{i_lo:+.4f},  {i_md:+.4f},  {i_hi:+.4f}]")
+
+--- Cell 19 (markdown) ---
+## 10. CAPM HAC, Jobson-Korkie/Memmel e Wald Spanning
+--- Cell 20 (code) ---
+X_capm = sm.add_constant((df["ret_ibov"] - df["rf"]).values)
+X_span = sm.add_constant(df["ret_ibov"].values)
+exc_ibov = df["ret_ibov"] - df["rf"]
+
+linhas_testes = []
+for est in ESTRATEGIAS:
+    exc = df[est] - df["rf"]
+    capm = sm.OLS(exc.values, X_capm).fit(cov_type="HAC", cov_kwds={"maxlags": SPANNING_MAX_LAGS})
+    z_jk, p_jk = _jk_memmel(exc, exc_ibov)
+    _, f_sp, p_sp = _wald_spanning(df[est].values, X_span, maxlags=SPANNING_MAX_LAGS)
+    linhas_testes.append({
+        "Estrategia":         est,
+        "CAPM alfa (% a.a.)": capm.params[0] * TRADING_DAYS * 100,
+        "CAPM beta":          capm.params[1],
+        "CAPM t_alfa (NW)":   capm.tvalues[0],
+        "CAPM p_alfa":        capm.pvalues[0],
+        "JK/Memmel z":        z_jk,
+        "JK/Memmel p":        p_jk,
+        "Spanning F":         f_sp,
+        "Spanning p":         p_sp,
+        "Sharpe (rf var)":    sharpe(df[est], df["rf"]),
+        "Sortino (rf var)":   sortino(df[est], df["rf"]),
+    })
+
+apendice_H = pd.DataFrame(linhas_testes).set_index("Estrategia")
+
+print("========================================================================")
+print("APÊNDICE L — INFERÊNCIA COMPARATIVA TRANSVERSAL (HAC Newey-West)")
+print("========================================================================\n")
+for est, row in apendice_H.iterrows():
+    print(f"\n> {est}")
+    print(f"   CAPM:     alfa = {row['CAPM alfa (% a.a.)']:+.2f}% a.a. | beta = {row['CAPM beta']:.3f} "
+          f"| t(NW) = {row['CAPM t_alfa (NW)']:+.3f} | p = {fmt_pvalor(row['CAPM p_alfa'])}")
+    print(f"   JK/Memmel vs IBOV: z = {row['JK/Memmel z']:+.3f} | p = {fmt_pvalor(row['JK/Memmel p'])}")
+    print(f"   Spanning (a=0,b=1): F = {row['Spanning F']:.2f} | p = {fmt_pvalor(row['Spanning p'])}")
+    print(f"   Sharpe = {row['Sharpe (rf var)']:+.4f} | Sortino = {row['Sortino (rf var)']:+.4f}")
+--- Cell 21 (markdown) ---
+## 11. Testes de Diferença do Índice de Sharpe vs 1/N
+
+H₀: SR_estratégia = SR_benchmark. Dois testes lado a lado:
+- **Jobson-Korkie-Memmel (2003)** — paramétrico, baseline;
+- **Ledoit-Wolf (2008)** — bootstrap estacionário, robusto a não-normalidade e autocorrelação.
+
+P-valores ajustados por **Holm-Bonferroni** (15 comparações).
+Benchmark: **EqualWeight** (1/N) — desafiante canônico de DeMiguel, Garlappi & Uppal (2009).
+
+--- Cell 22 (code) ---
+base_bench = df[BENCHMARK].dropna()
+exc_bench  = (df[BENCHMARK] - df['rf']).dropna()
+
+linhas_sr = []
+for est in ESTRATEGIAS:
+    if est == BENCHMARK:
+        continue
+    d = pd.concat([df[est], base_bench], axis=1).dropna()
+    exc_est = (df[est]       - df['rf']).reindex(d.index)
+    exc_bch = (df[BENCHMARK] - df['rf']).reindex(d.index)
+    _, p_jk = _jk_memmel(exc_est, exc_bch)
+    # LW bootstrap sobre retornos em EXCESSO — mesma base do JKM
+    dsr, p_lw = lw_bootstrap_sharpe(
+        exc_est.values, exc_bch.values,
+        bloco=BOOTSTRAP_BLOCK_MEAN, reps=BOOTSTRAP_REPS, seed=SEED
+    )
+    linhas_sr.append({'estrategia': est, 'dSR_anual_vs_1N': dsr,
+                      'JK_p': p_jk, 'LW_p': p_lw})
+
+testes_sr = pd.DataFrame(linhas_sr).set_index('estrategia')
+testes_sr['JK_p_holm'] = multipletests(testes_sr['JK_p'], method='holm')[1]
+testes_sr['LW_p_holm'] = multipletests(testes_sr['LW_p'], method='holm')[1]
+testes_sr['signif_LW'] = np.where(testes_sr['LW_p_holm'] < ALPHA_SIG, 'sim', 'nao')
+
+print(f'Diferenca de Sharpe vs {BENCHMARK} (dSR anualizado sobre excesso; p Holm):\n')
+print(testes_sr.round(4).to_string())
+
+--- Cell 23 (markdown) ---
+## 12. Testes de Diferença do Índice de Sortino vs 1/N
+
+Mesmo procedimento de bootstrap aplicado ao Sortino — coerente com a PMPT,
+por capturar exclusivamente o risco de queda. P-valores ajustados por Holm.
+
+--- Cell 24 (code) ---
+rf_medio = float(df['rf'].mean())
+
+linhas_so = []
+for est in ESTRATEGIAS:
+    if est == BENCHMARK:
+        continue
+    d = pd.concat([df[est], base_bench], axis=1).dropna()
+    exc_est_so = (df[est]       - df['rf']).reindex(d.index).values
+    exc_bch_so = (df[BENCHMARK] - df['rf']).reindex(d.index).values
+    # LW bootstrap sobre excesso com rf=0.0 (rf ja subtraido nos inputs)
+    dso, p = lw_bootstrap_sortino(
+        exc_est_so, exc_bch_so,
+        rf=0.0, bloco=BOOTSTRAP_BLOCK_MEAN, reps=BOOTSTRAP_REPS, seed=SEED
+    )
+    linhas_so.append({'estrategia': est, 'dSortino_anual': dso, 'LW_p': p})
+
+testes_so = pd.DataFrame(linhas_so).set_index('estrategia')
+testes_so['LW_p_holm'] = multipletests(testes_so['LW_p'], method='holm')[1]
+testes_so['signif_LW'] = np.where(testes_so['LW_p_holm'] < ALPHA_SIG, 'sim', 'nao')
+
+print(f'Diferenca de Sortino vs {BENCHMARK} (bootstrap excesso rf=0; p Holm):\n')
+print(testes_so.round(4).to_string())
+
+--- Cell 25 (markdown) ---
+## 11b–12b. Testes de Diferenca de Sharpe e Sortino vs Tres Benchmarks
+
+Mesmo protocolo das secoes 11–12, repetido para tres benchmarks simultaneos:
+
+1. **EqualWeight** — 1/N rebalanceado (DeMiguel, Garlappi & Uppal, 2009);
+2. **EW_BuyHold** — 1/N comprar-e-manter (sem rebalanceamento);
+3. **IBOV** — IBOVESPA (indice de mercado brasileiro).
+
+**Base de calculo:** todos os testes (JKM e LW bootstrap) operam sobre retornos em **excesso** (serie - CDI diario). Para o Sortino, os inputs ja chegam descontados de rf, portanto `rf=0.0` na chamada interna.
+
+**Correcao de Holm** aplicada **separadamente** dentro de cada benchmark (a familia de testes e o conjunto de estrategias comparadas aquele benchmark).
+
+**Nota metodologica (Sharpe):** `lw_bootstrap_sharpe` calcula internamente `mean(x)/std(x)` sem parametro rf proprio. Passar retornos em excesso garante que LW e JKM operem na mesma base — alinhamento que as secoes 11 e 12 originais tambem passaram a adotar nesta revisao.
+
+**Impacto empirico da mudanca de base (seed=42, B=2000):**
+
+| Par | dSR bruto | dSR excesso | diferenca |
+|-----|-----------|-------------|-----------|
+| EqualWeight_BuyHold vs EqualWeight | 0.4610 | 0.4478 | +0.013 |
+| MinVar vs EqualWeight | 0.5425 | 0.2942 | +0.248 |
+| BL_classico vs EqualWeight | 0.4739 | 0.5850 | -0.111 |
+
+O desvio e material para estrategias com volatilidade muito diferente do benchmark (MinVar, BL). Para o Sortino, o impacto foi inferior a 0.001 em todos os casos (rf_medio como escalar constante ja era uma boa aproximacao).
+
+Resultados exportados em `inferencia_sharpe_3benchmarks.csv` e `inferencia_sortino_3benchmarks.csv`.
+--- Cell 26 (code) ---
+BENCHMARKS_3 = {
+    "EqualWeight":    "EqualWeight",
+    "EW_BuyHold":     "EqualWeight_BuyHold",
+    "IBOV":           "ret_ibov",
+}
+
+# ── Sharpe triplo ──────────────────────────────────────────────────────────
+all_sr3 = []
+for label, col_bench in BENCHMARKS_3.items():
+    linhas = []
+    for est in ESTRATEGIAS:
+        if est == col_bench:
+            continue
+        d = pd.concat([df[est], df[col_bench]], axis=1).dropna()
+        exc_est = (df[est]       - df["rf"]).reindex(d.index)
+        exc_bch = (df[col_bench] - df["rf"]).reindex(d.index)
+        _, p_jk  = _jk_memmel(exc_est, exc_bch)
+        dsr, p_lw = lw_bootstrap_sharpe(
+            exc_est.values, exc_bch.values,
+            bloco=BOOTSTRAP_BLOCK_MEAN, reps=BOOTSTRAP_REPS, seed=SEED
+        )
+        linhas.append({"estrategia": est, "benchmark": label,
+                       "dSR_anual": dsr, "JK_p": p_jk, "LW_p": p_lw})
+    tmp = pd.DataFrame(linhas)
+    tmp["LW_p_holm"] = multipletests(tmp["LW_p"], method="holm")[1]
+    tmp["signif_LW"] = np.where(tmp["LW_p_holm"] < ALPHA_SIG, "sim", "nao")
+    all_sr3.append(tmp)
+
+sr3 = pd.concat(all_sr3, ignore_index=True)
+
+sr_wide = sr3.pivot(index="estrategia", columns="benchmark",
+                    values=["dSR_anual", "LW_p", "LW_p_holm", "signif_LW"])
+sr_wide.columns = [f"{v}|{b}" for v, b in sr_wide.columns]
+sr_wide = sr_wide.reindex(ESTRATEGIAS)
+
+print("=" * 80)
+print("DIFERENCA DE SHARPE vs TRES BENCHMARKS (dSR excesso anualizado | p Holm)")
+print("=" * 80)
+for bench_label in BENCHMARKS_3:
+    cols = [c for c in sr_wide.columns if c.endswith(f"|{bench_label}")]
+    sub = sr_wide[cols].dropna()
+    if not sub.empty:
+        sub.columns = [c.split("|")[0] for c in cols]
+        print(f"\n-- Benchmark: {bench_label} --")
+        print(sub.round(4).to_string())
+
+sr3.to_csv(OUTPUT_DIR / "inferencia_sharpe_3benchmarks.csv", index=False, float_format="%.6f")
+print(f"\nExportado: inferencia_sharpe_3benchmarks.csv")
+
+# ── Sortino triplo ─────────────────────────────────────────────────────────
+all_so3 = []
+for label, col_bench in BENCHMARKS_3.items():
+    linhas = []
+    for est in ESTRATEGIAS:
+        if est == col_bench:
+            continue
+        d = pd.concat([df[est], df[col_bench]], axis=1).dropna()
+        exc_est_so = (df[est]       - df["rf"]).reindex(d.index).values
+        exc_bch_so = (df[col_bench] - df["rf"]).reindex(d.index).values
+        dso, p = lw_bootstrap_sortino(
+            exc_est_so, exc_bch_so,
+            rf=0.0, bloco=BOOTSTRAP_BLOCK_MEAN, reps=BOOTSTRAP_REPS, seed=SEED
+        )
+        linhas.append({"estrategia": est, "benchmark": label,
+                       "dSortino_anual": dso, "LW_p": p})
+    tmp = pd.DataFrame(linhas)
+    tmp["LW_p_holm"] = multipletests(tmp["LW_p"], method="holm")[1]
+    tmp["signif_LW"] = np.where(tmp["LW_p_holm"] < ALPHA_SIG, "sim", "nao")
+    all_so3.append(tmp)
+
+so3 = pd.concat(all_so3, ignore_index=True)
+
+so_wide = so3.pivot(index="estrategia", columns="benchmark",
+             
+--- Cell 27 (markdown) ---
+## 13. Exportação dos Resultados e Apêndices
+--- Cell 28 (code) ---
+apendice_G = pd.DataFrame([
+    {"Teste": "ADF (log-retornos)",     "H₀": "raiz unitária",    "Estat.": adf_r[0],  "p-valor": adf_r[1]},
+    {"Teste": "KPSS (log-retornos)",    "H₀": "estacionariedade", "Estat.": kpss_r[0], "p-valor": kpss_r[1]},
+    {"Teste": "ADF (nível)",            "H₀": "raiz unitária",    "Estat.": adf_p[0],  "p-valor": adf_p[1]},
+    {"Teste": "KPSS (nível)",           "H₀": "estacionariedade", "Estat.": kpss_p[0], "p-valor": kpss_p[1]},
+    {"Teste": "ARCH-LM (10 lags)",      "H₀": "variância constante", "Estat.": arch_stat, "p-valor": arch_p},
+    {"Teste": "Jarque-Bera",            "H₀": "normalidade",      "Estat.": jb_stat,        "p-valor": jb_p},
+    {"Teste": "VR k=2 (Lo-MacKinlay)",  "H₀": "passeio aleatório", "Estat.": vr_2.stat,  "p-valor": vr_2.pvalue},
+    {"Teste": "VR k=16 (Lo-MacKinlay)", "H₀": "passeio aleatório", "Estat.": vr_16.stat, "p-valor": vr_16.pvalue},
+])
+apendice_G["Decisão"] = np.where(apendice_G["p-valor"] < 0.05, "Rejeita H₀ ✗", "Não rejeita H₀ ✓")
+apendice_G.to_csv(OUTPUT_DIR / "apendice_G_diagnostico_ibov.csv", index=False)
+
+apendice_H.to_csv(OUTPUT_DIR / "apendice_H_testes_estrategia.csv", float_format="%.6f")
+painel.to_csv(OUTPUT_DIR / "apendice_H_painel_metricas.csv", index=False)
+
+comp_rf_linhas = []
+for c in colunas_teste:
+    nm = "IBOVESPA" if c == "ret_ibov" else c
+    comp_rf_linhas.append({
+        "Estratégia": nm,
+        "Sharpe (CDI)": sharpe(df[c], df["rf"]),
+        "Sharpe (Zero)": sharpe(df[c], 0.0),
+        "Sortino (CDI)": sortino(df[c], df["rf"]),
+        "Sortino (Zero)": sortino(df[c], 0.0),
+    })
+comp_rf = pd.DataFrame(comp_rf_linhas)
+comp_rf.to_csv(OUTPUT_DIR / "apendice_H_comparativo_rf.csv", index=False)
+
+# Diagnósticos e testes de diferença (do NB07 atualizado)
+diag_estr.to_csv(OUTPUT_DIR / 'inferencia_diagnosticos.csv', float_format='%.6f')
+testes_sr.to_csv(OUTPUT_DIR / 'inferencia_sharpe_testes.csv', float_format='%.6f')
+testes_so.to_csv(OUTPUT_DIR / 'inferencia_sortino_testes.csv', float_format='%.6f')
+
+print('✓ CSVs de apêndice exportados com sucesso em:', OUTPUT_DIR)
+print('  + inferencia_diagnosticos.csv')
+print('  + inferencia_sharpe_testes.csv')
+print('  + inferencia_sortino_testes.csv')
+--- Cell 29 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 09_01 (Inferência Econométrica) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |

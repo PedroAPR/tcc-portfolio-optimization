@@ -52,9 +52,9 @@ pipeline_stages = [
         "notebook": src_dir / "05_Alinhamento_Winsorizacao" / "05_01_Alinhamento_e_Retornos.ipynb",
         "desc": "Alinhamento de datas das ações com IBOV/CDI/Selic e cálculo de retornos",
         "dependencies": [
-            src_dir / "05_Alinhamento_Winsorizacao" / "utils" / "alinhamento.py",
-            src_dir / "05_Alinhamento_Winsorizacao" / "utils" / "conversoes.py",
-            src_dir / "05_Alinhamento_Winsorizacao" / "utils" / "config_loader.py"
+            src_dir / "utils" / "alinhamento.py",
+            src_dir / "utils" / "conversoes.py",
+            src_dir / "utils" / "config_loader.py"
         ],
         "sentinels": [
             project_root / "data" / "Retornos" / "retornos_simples.parquet",
@@ -66,8 +66,8 @@ pipeline_stages = [
         "notebook": src_dir / "05_Alinhamento_Winsorizacao" / "05_02_Saneamento_e_Winsorizacao.ipynb",
         "desc": "Saneamento estatístico de retornos e winsorização robusta de outliers",
         "dependencies": [
-            src_dir / "05_Alinhamento_Winsorizacao" / "utils" / "winsorizacao.py",
-            src_dir / "05_Alinhamento_Winsorizacao" / "utils" / "config_loader.py"
+            src_dir / "utils" / "winsorizacao.py",
+            src_dir / "utils" / "config_loader.py"
         ],
         "sentinels": [project_root / "data" / "Retornos" / "retornos_simples_saneado.parquet"]
     },
@@ -76,8 +76,8 @@ pipeline_stages = [
         "notebook": src_dir / "06_Estimacao_Covariancia" / "06_01_Estimacao_LedoitWolf.ipynb",
         "desc": "Estimação de momentos estatísticos e covariância regularizada por Ledoit-Wolf",
         "dependencies": [
-            src_dir / "06_Estimacao_Covariancia" / "utils" / "covariancia.py",
-            src_dir / "06_Estimacao_Covariancia" / "utils" / "config_loader.py"
+            src_dir / "utils" / "covariancia.py",
+            src_dir / "utils" / "config_loader.py"
         ],
         "sentinels": [project_root / "data" / "Momentos" / "sigma_ledoitwolf_anual.parquet"]
     },
@@ -86,8 +86,8 @@ pipeline_stages = [
         "notebook": src_dir / "07_Otimizacao_Carteiras" / "07_01_Otimizacao_Carteiras.ipynb",
         "desc": "Estimação de momentos estatísticos e backtest das carteiras MPT/PMPT",
         "dependencies": [
-            src_dir / "07_Otimizacao_Carteiras" / "utils" / "otimizacao.py",
-            src_dir / "07_Otimizacao_Carteiras" / "utils" / "config_loader.py"
+            src_dir / "utils" / "otimizacao.py",
+            src_dir / "utils" / "config_loader.py"
         ],
         "sentinels": [project_root / "data" / "Estrategias" / "strategy_returns.parquet"]
     },
@@ -96,8 +96,8 @@ pipeline_stages = [
         "notebook": src_dir / "08_Fronteira_Eficiente" / "08_01_Fronteira_Eficiente.ipynb",
         "desc": "Simulação Monte Carlo e traçado das fronteiras eficientes MPT (média-variância) e PMPT (média-CVaR)",
         "dependencies": [
-            src_dir / "08_Fronteira_Eficiente" / "utils" / "fronteira.py",
-            src_dir / "08_Fronteira_Eficiente" / "utils" / "config_loader.py"
+            src_dir / "utils" / "fronteira.py",
+            src_dir / "utils" / "config_loader.py"
         ],
         "sentinels": [
             project_root / "data" / "Estrategias" / "fronteira_mv_pontos.csv",
@@ -110,8 +110,8 @@ pipeline_stages = [
         "notebook": src_dir / "09_Inferencia_Econometrica" / "09_01_Inferencia_Econometrica.ipynb",
         "desc": "Caracterização econométrica do benchmark (IBOVESPA) e inferência comparada de Sharpe/CAPM/Spanning via Bootstrap e erros HAC",
         "dependencies": [
-            src_dir / "09_Inferencia_Econometrica" / "utils" / "inferencia.py",
-            src_dir / "09_Inferencia_Econometrica" / "utils" / "config_loader.py"
+            src_dir / "utils" / "inferencia.py",
+            src_dir / "utils" / "config_loader.py"
         ],
         "sentinels": [
             project_root / "data" / "Estrategias" / "apendice_G_diagnostico_ibov.csv",

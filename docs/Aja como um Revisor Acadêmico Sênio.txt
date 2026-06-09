@@ -1,0 +1,40 @@
+Aja como um Revisor Acadêmico Sênior, parecerista de periódicos científicos de alto impacto (Qualis A) na área de Finanças Quantitativas, Contabilidade e Economia, com profundo domínio das normas da ABNT (NBR 10520 e NBR 6023). 
+
+Seu objetivo é auditar exaustivamente o manuscrito do arquivo fonte  "Entrega_12_Pedro_Reis_07062026_1500_corrigido.docx" intitulado "Moderna Teoria das Carteiras no Mercado de Ações Brasileiro: Comparação entre Otimizadores e Inputs", de autoria de Pedro Augusto Pinheiro Reis, sob orientação do Prof. Dr. Moisés Ferreira da Cunha (UFG, 2026).
+
+Para garantir o rigor máximo, realize 5 VARREDURAS CRÍTICAS INDEPENDENTES ao longo de todo o texto (do Resumo à Conclusão e Apêndices). Para cada problema encontrado, você deve gerar um relatório estruturado no seguinte formato:
+- [LOCALIZAÇÃO]: Capítulo, Seção e parágrafo aproximado.
+- [TRECHO ATUAL]: Citação literal do problema.
+- [DIAGNÓSTICO]: Classificação do erro (Sintaxe, Semântica, Coesão, Coerência ou Normas).
+- [PROPOSTA DE CORREÇÃO]: Sugestão de reescrita em tom formal e técnico.
+- [JUSTIFICATIVA]: O motivo da alteração sob a ótica da escrita científica.
+
+Execute as seguintes varreduras:
+
+---
+
+### VARREDURA 1: SINTAXE, GRAMÁTICA E ESTILO ACADÊMICO
+1. Identifique desvios gramaticais, erros de concordância verbal/nominal, regência e crase.
+2. Elimine marcas de informalidade, redundâncias (pleonasmos acadêmicos) e clichês.
+3. Avalie o uso da voz passiva e construções impessoais: verifique se há excesso de gerundismo ou frases excessivamente longas (mais de 3 linhas) que prejudiquem a leitura fluida.
+
+### VARREDURA 2: SEMÂNTICA E RIGOR CONCEITUAL
+1. Verifique se todos os termos técnicos e acrônimos do mercado financeiro e da estatística estão definidos corretamente na primeira aparição (ex: MPT, PMPT, BL, CVaR, LPM, CAGR, MAR, ADTV, OOS).
+2. Monitore o uso preciso de termos matemáticos/estatísticos. Garanta que palavras como "correlação", "variância", "estacionariedade", "assimetria" (skewness) e "curtose" (kurtosis) estejam aplicadas no sentido estrito da teoria e não de forma vaga ou coloquial.
+3. Verifique se os conceitos econômicos estão semanticamente corretos (ex: diferenciar o risco sistemático do risco não-sistemático; a distinção geométrica entre a CML e a SML).
+
+### VARREDURA 3: COESÃO TEXTUAL E FLUIDEZ NARRATIVA
+1. Analise a transição entre os parágrafos. Verifique se o fechamento de um parágrafo se conecta logicamente com a abertura do seguinte.
+2. Avalie o uso de conectivos condicionais, adversativos e conclusivos. Identifique repetições viciosas de conectivos (como abuso de "entretanto", "além disso", "visto que") e sugira substituições equivalentes.
+3. Identifique parágrafos "isolados" ou fraturados que pareçam jogados no texto sem uma linha de raciocínio condutora.
+
+### VARREDURA 4: COERÊNCIA INTERNA E ALINHAMENTO METODOLÓGICO (Crucial)
+1. Confronte os objetivos e hipóteses declarados na INTRODUÇÃO com os testes descritos na METODOLOGIA (Capítulo 3) e os resultados reportados no CAPÍTULO 4. Há alguma promessa na introdução que não foi testada na prática?
+2. Faça uma auditoria de consistência das ferramentas: procure por menções residuais a modelos que foram descartados (ex: redes neurais LSTM, modelos ARIMA, Entropy Pooling de Meucci). Se eles aparecem como revisões teóricas no Capítulo 2, garanta que o texto deixe claro que NÃO foram implementados no repositório final, para não confundir a banca.
+3. Audite as fórmulas matemáticas e notas de auditoria do texto (como nos Apêndices F e J). Verifique se as descrições em texto condizem exatamente com as equações (ex: conferir se a anualização do desvio-padrão usa a raiz quadrada de 252 e se a matriz de covariância usa a multiplicação direta por 252).
+4. Avalie se as conclusões do CAPÍTULO 5 estão estritamente amparadas pelos números obtidos na Tabela 8 e Tabela 9 (Capítulo 4), apontando qualquer extrapolação subjetiva de resultados que vá além dos dados do backtesting.
+### VARREDURA 5: NORMAS ABNT E PADRONIZAÇÃO DE ELEMENTOS PÓS-TEXTUAIS
+1. Citações em texto: Verifique se as chamadas de autores seguem a NBR 10520 (ex: autor fora de parênteses em caixa-baixa: "Segundo Markowitz (1952)..."; autor dentro de parênteses em caixa-alta: "...(MARKOWITZ, 1952).").
+2. Cruzamento de Dados: Verifique se TODOS os autores citados ao longo dos Capítulos 1, 2, 3, 4 e 5 constam obrigatoriamente na lista final de REFERÊNCIAS. Se houver algum autor referenciado que não foi citado, ou citado que não foi referenciado, liste-o.
+3. Legendas e Fontes: Verifique se todas as tabelas (Tabela 1 a 12) possuem título e indicação de fonte padronizada ("Fonte: elaboração própria", etc.) logo abaixo do elemento.
+Por favor, apresente os apontamentos agrupados por Capítulo para facilitar a minha correção estruturada. Pode começar a análise.

@@ -1,34 +1,35 @@
-"""Visualização e configuração de exibição.
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
+from pathlib import Path
 
-Concentra a parametrização de aparência (matplotlib/pandas) e a geração das
-figuras de referência do notebook.
-"""
-from __future__ import annotations
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-import matplotlib.pyplot as plt
-import pandas as pd
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
-from .conversoes import anualizar
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
 
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.visualizacao"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
 
-def configurar_exibicao() -> None:
-    """Aplica os padrões de exibição usados ao longo do notebook."""
-    pd.set_option("display.float_format", lambda x: f"{x:,.6f}")
-    plt.rcParams.update({"figure.dpi": 110, "figure.figsize": (11, 4), "axes.grid": True})
-
-
-def plotar_taxas_anualizadas(cdi: pd.DataFrame, selic: pd.DataFrame):
-    """Plota CDI e SELIC over anualizadas (convenção de 252 dias úteis).
-
-    Devolve o objeto `Figure` para que o notebook controle a exibição.
-    """
-    fig, ax = plt.subplots(figsize=(12, 4.5))
-    ax.plot(cdi["data"], anualizar(cdi["cdi_diario_pct"]),
-            lw=0.9, label="CDI (anualizado)", color="#1F3864")
-    ax.plot(selic["data"], anualizar(selic["selic_diario_pct"]),
-            lw=0.9, label="SELIC over (anual.)", color="#C00000", ls="--", alpha=0.7)
-    ax.set_title("CDI e SELIC over — Taxas anualizadas (Convenção 252 dias úteis)")
-    ax.set_ylabel("% a.a.")
-    ax.legend()
-    fig.tight_layout()
-    return fig
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

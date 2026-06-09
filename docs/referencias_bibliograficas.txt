@@ -1,0 +1,122 @@
+**12 Return, Risk, and the**. 2025. Acesso em: 28 nov. 2025.
+
+**3.4: Choice under Uncertainty - Expected Utility Theory**. Business LibreTexts, 2025. Acesso em: 28 nov. 2025.
+
+A comparison of the black- litterman model and the mean- variance approach. **CBS Research Portal**, 2025. Disponível em: <https://www.google.com>. Acesso em: 28 nov. 2025.
+
+ARTZNER, Philippe; DELBAEN, Freddy; EBER, Jean-Marc; HEATH, David. Coherent measures of risk. **Mathematical Finance**, Hoboken, v. 9, n. 3, p. 203-228, jul. 1999.
+
+ATHAYDE, Gustavo; FLORES, Renato. Portfolio optimisation with higher moments of risk at the Pakistan Stock Exchange. **Economic Research — Ekonomska Istraživanja**, Zagreb, v. 30, n. 1, p. 1401-1415, 2017. Disponível em: https://www.tandfonline.com/doi/full/10.1080/1331677X.2017.1340182. Acesso em: nov. 2025.
+
+BARNDORFF-NIELSEN, Ole E. et al. Measuring downside risk — realised semivariance. **Duke Economics**, 2008. Acesso em: 28 nov. 2025.
+
+BAWA, Vijay S. Optimal rules for ordering uncertain prospects. **Journal of Financial Economics**, Amsterdam, v. 2, n. 1, p. 95-121, mar. 1975.
+
+BLACK, Fischer; LITTERMAN, Robert. Asset allocation: combining investor views with market equilibrium. **The Journal of Fixed Income**, v. 1, n. 2, p. 7-18, dez. 1991. Disponível em: <https://people.duke.edu/~charvey/Teaching/BA453_2006/Black_Litterman_1991.pdf>. Acesso em: 28 nov. 2025.
+
+BLACK, Fischer; LITTERMAN, Robert. Global portfolio optimization. **Financial Analysts Journal**, Charlottesville, v. 48, n. 5, p. 28-43, set./out. 1992. Disponível em: <https://www.cfainstitute.org/research/financial-analysts-journal/1992/global-portfolio-optimization>. Acesso em: 28 nov. 2025.
+
+BLACK-LITTERMAN model with copula-based views in mean-CVaR portfolio optimization framework with weight constraints. **PMC - PubMed Central**, 2025. Disponível em: <https://www.google.com>. Acesso em: 28 nov. 2025.
+
+BLACK–LITTERMAN model. In: **WIKIPEDIA: the free encyclopedia**. [S. l.]: Wikimedia Foundation, 2025. Disponível em: <https://en.wikipedia.org/wiki/Black%E2%80%93Litterman_model>. Acesso em: 28 nov. 2025.
+
+BOYD, Stephen et al. **Markowitz Portfolio Construction at Seventy**. Stanford University, 2024. Acesso em: 28 nov. 2025.
+
+BUCKLE, David J. Portfolio skew and kurtosis. **Risk**, Londres, jun. 2006. Disponível em: https://www.risk.net/sites/default/files/import_unmanaged/risk.net/data/risk/pdf/technical/risk_0605_technical_buckle.pdf. Acesso em: nov. 2025.
+
+**CAPITAL asset pricing model**. Risk Management (FIN 4335) Course Website, 2025. Acesso em: 28 nov. 2025.
+
+CHOW, George; DENNING, Karen C. A practitioner's guide to address fat tails and downside risk in portfolio construction. **Journal of Investment Management**, Irvine, 1994. Disponível em: https://www.joim.com/wp-content/uploads/emember/downloads/p0725.pdf. Acesso em: nov. 2025.
+
+**CONDITIONAL Value-at-Risk for General Loss Distributions**. University of Washington Math Department, 2025. Acesso em: 28 nov. 2025.
+
+DECONSTRUCTING Black-Litterman: How to Get the Portfolio You Already Knew You Wanted. 2025. Disponível em: <https://www.google.com>. Acesso em: 28 nov. 2025.
+
+DEMIGUEL, Victor; GARLAPPI, Lorenzo; UPPAL, Raman. Optimal versus naive diversification: how inefficient is the 1/N portfolio strategy? The Review of Financial Studies, Oxford, v. 22, n. 5, p. 1915–1953, maio 2009.
+
+DIVERSIFICATION.COM. **Black litterman model: Meaning, Criticisms & Real-World Uses**. 2025. Disponível em: <https://www.diversification.com/black-litterman-model/>. Acesso em: 28 nov. 2025.
+
+**DOWNSIDE Risk-Based Six-Factor Capital Asset Pricing Model (CAPM): A New Paradigm in Asset Pricing**. MDPI, 2025. Acesso em: 28 nov. 2025.
+
+FAMA, Eugene F. The behavior of stock-market prices. **The Journal of Business**, Chicago, v. 38, n. 1, p. 34-105, jan. 1965.
+
+FAMA, Eugene F.; FRENCH, Kenneth R. The Capital Asset Pricing Model: Theory and Evidence. **Journal of Economic Perspectives**, v. 18, n. 3, p. 25-46, 2004. Acesso em: 28 nov. 2025.
+
+FISHBURN, Peter C. Mean-risk analysis with risk associated with below-target returns. **The American Economic Review**, Nashville, v. 67, n. 2, p. 116-126, mar. 1977.
+
+GIRARD, Emre; KODJOVI, Messan. The introduction of emerging currencies into a portfolio: towards a more complete diversification model. **Économie internationale**, Paris, n. 121, p. 5-38, 2010. Disponível em: https://shs.cairn.info/revue-economie-internationale-2010-1-page-5?lang=en. Acesso em: nov. 2025.
+
+HE, Guangliang; LITTERMAN, Robert. The intuition behind Black-Litterman model portfolios. New York: Goldman Sachs Investment Management Division, 1999. (Investment Management Research).
+
+HOLTON, Glyn. **Capital Market Line**. GlynHolton.com, 2025. Acesso em: 28 nov. 2025.
+
+IDZOREK, Thomas M. **A Step-by-Step Guide to the Black-Litterman Model: Incorporating User-Specified Confidence Levels**. Chicago: Ibbotson Associates, 2005. Disponível em: <https://people.duke.edu/~charvey/Teaching/BA453_2006/Idzorek_onBL.pdf>. Acesso em: 28 nov. 2025.
+
+INVESTOPEDIA. **Understanding the Black-Litterman Model for Portfolio Optimization**. 2025. Disponível em: <https://www.investopedia.com/terms/b/black-litterman_model.asp>. Acesso em: 28 nov. 2025.
+
+JARVIS, Stuart. Dynamic asset allocation techniques. In: INTERNATIONAL CONGRESS OF ACTUARIES, 2010, Cape Town. **Anais…** Cap Town: International Actuarial Association, 2010. Disponível em: https://actuaries.org/app/uploads/2025/07/ICA2010_AFIR_32_final-paper_Jarvis.pdf. Acesso em: nov. 2025.
+
+KAHNEMAN, Daniel; TVERSKY, Amos. Prospect theory: an analysis of decision under risk. **Econometrica**, Hoboken, v. 47, n. 2, p. 263-292, mar. 1979.
+
+KAPLAN, Paul D.; KNOWLES, James A. Kappa: a generalized downside risk-adjusted performance measure. **Journal of Performance Measurement**, New York, v. 8, n. 3, p. 42-54, primavera 2004. Disponível em: http://w.performance-measurement.org/KaplanKnowles2004.pdf. Acesso em: nov. 2025.
+
+KEATING, Con; SHADWICK, William F. A universal performance measure. **Journal of Performance Measurement**, New York, v. 6, n. 3, p. 59-84, primavera 2002. Disponível em: https://www.researchgate.net/publication/228550687_A_Universal_Performance_Measure. Acesso em: nov. 2025.
+
+LEDOIT, Olivier; WOLF, Michael. A well-conditioned estimator for large-dimensional covariance matrices. Journal of Multivariate Analysis, Amsterdam, v. 88, n. 2, p. 365–411, fev. 2004.
+
+LINTNER, John. The valuation of risk assets and the selection of risky investments in stock portfolios and capital budgets. **The Review of Economics and Statistics**, v. 47, n. 1, p. 13-37, 1965.
+
+MANDELBROT, Benoit. The variation of certain speculative prices. **The Journal of Business**, Chicago, v. 36, n. 4, p. 394-419, out. 1963.
+
+**MARKOWITZ Semivariance 1959 | PDF | Sampling (Statistics) | Variance**. Scribd, 2025. Acesso em: 28 nov. 2025.
+
+MARKOWITZ, Harry M. **Prize Lecture**: Portfolio Selection: Efficient Diversification of Investments. Nobel Prize, 1990. Acesso em: 28 nov. 2025.
+
+MARKOWITZ, Harry. Portfolio Selection. **The Journal of Finance**, v. 7, n. 1, p. 77-91, Mar. 1952. Acesso em: 28 nov. 2025.
+
+MEAN-VARIANCE Optimization – an Overview. **CFA, FRM, and Actuarial Exams Study Notes**, 2025. Disponível em: <https://www.google.com>. Acesso em: 28 nov. 2025.
+
+MEUCCI, Attilio. Fully flexible views: theory and practice. **Risk**, London, v. 21, n. 10, p. 100-105, out. 2008. Disponível em: <https://ssrn.com/abstract=1213091>. Acesso em: 28 nov. 2025.
+
+MORGAN, J. P. **RiskMetrics: technical document**. 4. ed. New York: J.P. Morgan & Co., 1996. Disponível em: https://www.value-at-risk.net/riskmetrics/. Acesso em: nov. 2025.
+
+MOSSIN, Jan. Equilibrium in a capital asset market. **Econometrica**, v. 34, n. 4, p. 768-783, 1966.
+
+PIRES, Arthur Martinez. **Impactos da Crise Hídrica na Matriz Energética Brasileira: uma Abordagem via Teoria de Portfólios**. 2021. Trabalho de Conclusão de Curso (Graduação em Engenharia de Produção) - Escola Politécnica, Universidade de São Paulo, São Paulo, 2021. Acesso em: 28 nov. 2025.
+
+**RISK measurement in post-modern portfolio theory: Differences from modern portfolio theory**. 2025. Acesso em: 28 nov. 2025.
+
+ROCKAFELLAR, R. Tyrrell; URYASEV, Stanislav. Conditional value-at-risk for general loss distributions. **Journal of Banking & Finance**, Amsterdam, v. 26, n. 7, p. 1443-1471, 2002. Disponível em: https://sites.math.washington.edu/~rtr/papers/rtr187-CVaR2.pdf. Acesso em: nov. 2025.
+
+ROCKAFELLAR, R. Tyrrell; URYASEV, Stanislav. Optimization of conditional value-at-risk. **Journal of Risk**, Londres, v. 2, n. 3, p. 21-41, 2000. Disponível em: https://sites.math.washington.edu/~rtr/papers/rtr179-CVaR1.pdf. Acesso em: nov. 2025.
+
+ROLLINGER, Thomas N.; HOFFMAN, Scott T. **Sortino: A 'Sharper' Ratio**. CME Group, 2013. Acesso em: 28 nov. 2025.
+
+ROM, Brian M.; FERGUSON, Kathleen B. **Post-Modern Portfolio Theory Comes of Age**. Casualty Actuarial Society, 1994. Acesso em: 28 nov. 2025.
+
+RUBINSTEIN, Mark. Markowitz's "Portfolio Selection": A Fifty-Year Retrospective. **The Journal of Finance**, v. 57, n. 3, p. 1041-1045, 2002. Acesso em: 28 nov. 2025.
+
+SANTOS, André Alves Portela; TESSARI, Cristina. Técnicas quantitativas de otimização de carteiras aplicadas ao mercado de ações brasileiro. Revista Brasileira de Finanças, Rio de Janeiro, v. 10, n. 3, p. 369–393, set. 2012.
+
+SHARPE, William F. Capital asset prices: A theory of market equilibrium under conditions of risk. **The Journal of Finance**, v. 19, n. 3, p. 425-442, 1964.
+
+SHARPE, William F. Mutual fund performance. **The Journal of Business**, v. 39, n. 1, p. 119-138, 1966.
+
+SORTINO, Frank A.; VAN DER MEER, Robert. Downside risk. **The Journal of Portfolio Management**, New York, v. 17, n. 4, p. 27-31, 1991.
+
+TESTING the Black- Litterman Model. **Lund University**, Lund, 2025. Disponível em: <https://lup.lub.lu.se/>. Acesso em: 28 nov. 2025.
+
+THE Black-Litterman Asset Allocation Model. **KTH Royal Institute of Technology**, Estocolmo, 2025. Disponível em: <https://www.diva-portal.org/>. Acesso em: 28 nov. 2025.
+
+TOBIN, James. Liquidity Preference as Behavior Towards Risk. **The Review of Economic Studies**, v. 25, n. 2, p. 65-86, 1958. Acesso em: 28 nov. 2025.
+
+TOOLSHERO. **Black Litterman Model Explained: Theory and Criticism**. 2025. Disponível em: <https://www.toolshero.com/>. Acesso em: 28 nov. 2025.
+
+TREYNOR, Jack L. **Toward a Theory of Market Value of Risky Assets**. Unpublished manuscript, 1962.
+
+**VALUE at Risk (VaR) vs Expected Shortfall (ES)**. Forrs.de, 2025. Acesso em: 28 nov. 2025.
+
+WELCH, Ivo; GOYAL, Amit. A comprehensive look at the empirical performance of equity premium prediction. The Review of Financial Studies, Oxford, v. 21, n. 4, p. 1455–1508, jul. 2008.
+
+WILLIAMS, John Burr. The Theory of Investment Value. Cambridge: Harvard University Press, 1938.
+ corrija essas referencias bibliograficas

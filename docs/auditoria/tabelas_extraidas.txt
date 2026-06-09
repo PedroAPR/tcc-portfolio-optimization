@@ -1,0 +1,238 @@
+
+=== Tabela 0 ===
+ | 
+
+=== Tabela 1 ===
+ | 
+
+=== Tabela 2 ===
+Característica | Capital Market Line (CML) | Security Market Line (SML)
+Medida de Risco | Desvio Padrão Total | Beta Sistemático
+Aplicação | Apenas Portfólios Eficientes | Qualquer Ativo Individual ou Portfólio
+Definição de Risco | Risco Total (Sistemático + Idiossincrático) | Apenas Risco Sistemático (Covariância com Mercado)
+Ponto de Intercepto | Taxa Livre de Risco | Taxa Livre de Risco
+Inclinação (Slope) | Índice de Sharpe do Mercado | Prêmio de Risco de Mercado
+Fundamentação | Teorema da Separação de Tobin | Modelo de Equilíbrio de Mercado (CAPM)
+
+=== Tabela 3 ===
+Fator | Definição | Fundamentação de Risco (Racional) | Fundamentação Comportamental (Irracional)
+Mercado (MKT) | β × ERP | Compensação pelo risco sistemático da economia. | -
+Tamanho (SMB) | Small - Big | Risco de iliquidez e vulnerabilidade a choques de crédito. | Preferência por ações "loteria" (skewness positiva) em Small Caps.
+Valor (HML) | High - Low | Risco de falência (distress risk) e alavancagem operacional. | Overreaction a más notícias passadas; viés de representatividade.
+Lucratividade (RMW) | Robust - Weak | Qualidade dos lucros e menor volatilidade de fluxo de caixa. | Subestimação da persistência dos lucros de empresas de qualidade.
+Investimento (CMA) | Conservative - Aggressive | Retornos marginais decrescentes do investimento. | Penalização do "Empire Building" e excesso de confiança de CEOs.
+Momentum (WML) | Winners - Losers | Risco de liquidez temporária? (Contestado). | Underreaction inicial (ancoragem) seguido de Herding.
+
+=== Tabela 4 ===
+Viés Cognitivo | Mecanismo Psicológico | Manifestação no Mercado e no Portfólio
+Excesso de Confiança (Overconfidence) | Superestimação da precisão das informações privadas e da própria habilidade de previsão. | Resulta em volumes de negociação excessivos (overtrading), que corroem os retornos líquidos, e em subdiversificação (carteiras concentradas). Na modelagem bayesiana, traduz-se em intervalos de confiança excessivamente estreitos para as "visões" do gestor (BARBER; ODEAN, 2001).
+Viés de Ancoragem (Anchoring) | Fixação em informações iniciais ou irrelevantes, como o preço de compra ou as máximas históricas. | Cria resistência a novos níveis de preço ("o preço está muito baixo comparado ao ano passado"), gerando ineficiências de sub-reação a novas informações fundamentais negativas (momentum de baixa) (TVERSKY; KAHNEMAN, 1974).
+Comportamento de Manada (Herding) | Imitação das ações de um grupo maior, ignorando informações privadas ou fundamentos. | Motor crítico de bolhas especulativas e crashes súbitos. Desafia a premissa de independência dos erros nos modelos de equilíbrio tradicionais, aumentando a correlação entre ativos em momentos de estresse (NOFSINGER; SIAS, 1999).
+Contabilidade Mental (Mental Accounting) | Separação do patrimônio em "contas" mentais distintas baseadas na origem ou no destino do dinheiro. | Leva a construções de portfólio ineficientes, onde o investidor assume riscos excessivos com o "dinheiro da casa" (lucros passados) enquanto é excessivamente conservador com o principal (THALER, 1999).
+
+=== Tabela 5 ===
+Dimensão Analítica | Moderna Teoria do Portfólio (MPT) | Teoria Pós-Moderna do Portfólio (PMPT)
+Medida de Risco Central | Variância / Desvio Padrão | Downside Deviation / LPM / CVaR
+Distribuição de Retornos | Normal (Simétrica, Paramétrica) | Qualquer (Não-Normal, Assimétrica, Empírica)
+Definição de Risco | Dispersão em torno da média (Incerteza Total) | Fracasso em atingir o Retorno Mínimo (MAR)
+Visão do Investidor | Avesso à variância (Quadrática) | Avesso à perda (Loss Aversion - Prospect Theory)
+Tratamento do Upside | Penalizado como risco (aumenta ) | Ignorado ou valorizado (Upside Potential)
+Objetivo da Otimização | Maximizar Retorno para dado | Maximizar Retorno para dado Downside Risk
+
+=== Tabela 6 ===
+Indicador | Base Teórica | Fórmula Conceitual | Sensibilidade à Cauda | Principal Aplicação
+Sharpe | MPT (Variância) |  | Baixa (Assume Normalidade) | Ativos tradicionais, Benchmark relativo
+Sortino | PMPT (LPM 2) |  | Média (Foca no Downside) | Fundos Assimétricos, Hedge Funds
+Omega | PMPT (Todos Momentos) |  | Alta (Captura toda distribuição) | Derivativos, Cripto, Private Equity
+Kappa | PMPT (LPM 3) |  | Muito Alta (Penaliza extremos) | Gestão de Risco de Cauda, Seguros
+
+=== Tabela 7 ===
+Dimensão Analítica | MPT (Markowitz) | Black-Litterman (BL) | PMPT (Pós-Moderna)
+Foco Principal | Diversificação Matemática | Estabilidade da Estimativa | Assimetria do Risco (Downside)
+Input de Retorno | Histórico (Instável) | Equilíbrio + Visões (Bayesiano) | Histórico ou Subjetivo
+Tratamento de Erros | Maximiza Erros (Michaud) | Mitiga via Shrinkage (Prior) | Neutro (Depende do Input)
+Medida de Risco | Variância (Simétrica) | Variância (Canônico) | Semivariância, CVaR, LPM
+Resultado Típico | Soluções de Canto (Instáveis) | Portfólio Diversificado (Estável) | Proteção de Cauda e Assimetria
+
+=== Tabela 8 ===
+Modelo | Família | Função objetivo | Medida de risco | Teto
+EqualWeight | MPT | — (regra fixa ) | — | —
+InvVol | MPT | — (regra ) | Volatilidade individual | —
+MinVar | MPT | Min variância |  | Não
+MinVar_c10 | MPT | Min variância |  | 10%
+MaxSharpe | MPT | Máx utilidade MV () | Variância | Não
+MaxSharpe_c10 | MPT | Máx utilidade MV () | Variância | 10%
+MaxOmega | PMPT | Máx |  | Não
+MaxSortino | PMPT | Máx Sortino |  | Não
+MaxKappa3 | PMPT | Máx |  | Não
+MinCVaR | PMPT | Min CVaR (95%) | Cauda de retornos | Não
+MinCDaR | PMPT | Min CDaR (95%) | Cauda de drawdowns | Não
+BL_classico | BL | Máx utilidade MV sobre | Variância | Não
+BL_classico_c10 | BL | Máx utilidade MV sobre | Variância | 10%
+BL_downside | BL | Máx utilidade MV sobre | Semicovariância | Não
+BL_downside_c10 | BL | Máx utilidade MV sobre | Semicovariância | 10%
+
+=== Tabela 9 ===
+Estratégia | Família | Ret. Acum. (%) | CAGR (% a.a.) | Vol. (% a.a.) | Sharpe | Sortino | Max. DD (%) | Turnover (% a.a.)
+BL_classico | BL | 920,5 | 24,31 | 25,97 | 0,611 | 0,890 | -38,93 | 798,2
+BL_classico_c10 | BL | 628,2 | 20,44 | 20,20 | 0,563 | 0,792 | -33,60 | 629,4
+BL_downside | BL | 804,1 | 22,91 | 32,17 | 0,514 | 0,753 | -57,41 | 948,2
+EqualWeight_BuyHold | MPT (ref.) | 448,4 | 17,28 | 19,28 | 0,443 | 0,621 | -33,00 | 0,0
+BL_downside_c10 | BL | 428,0 | 16,87 | 22,30 | 0,395 | 0,554 | -38,01 | 732,9
+InvVol | MPT | 330,2 | 14,65 | 18,90 | 0,328 | 0,455 | -34,28 | 78,8
+MaxSharpe | MPT | 303,6 | 13,96 | 17,54 | 0,305 | 0,430 | -22,76 | 121,9
+MinVar_c10 | MPT | 274,7 | 13,17 | 12,98 | 0,304 | 0,415 | -25,00 | 78,6
+MinVar | MPT | 268,6 | 13,00 | 12,95 | 0,293 | 0,400 | -25,05 | 80,1
+EqualWeight | MPT | 301,7 | 13,91 | 19,56 | 0,290 | 0,403 | -35,54 | 82,9
+MaxKappa3 | PMPT | 291,7 | 13,64 | 18,26 | 0,284 | 0,403 | -22,55 | 133,8
+MaxSortino | PMPT | 287,4 | 13,53 | 17,79 | 0,281 | 0,397 | -23,26 | 131,0
+MinCVaR | PMPT | 254,0 | 12,57 | 12,88 | 0,264 | 0,363 | -26,44 | 110,6
+MaxSharpe_c10 | MPT | 268,1 | 12,99 | 16,54 | 0,261 | 0,365 | -23,89 | 150,8
+IBOVESPA | benchmark | 212,4 | 11,26 | 23,32 | 0,178 | 0,245 | -46,82 | —
+MaxOmega | PMPT | 196,2 | 10,71 | 21,23 | 0,149 | 0,210 | -30,67 | 224,1
+MinCDaR | PMPT | 74,6 | 5,36 | 19,82 | -0,105 | -0,145 | -62,46 | 147,4
+
+=== Tabela 10 ===
+Estratégia | CAGR (% a.a.) | Volatilidade (% a.a.) | Sharpe | Max. Drawdown (%) | Turnover (% a.a.)
+BL_classico (BL, momentum) | 24,31 | 25,97 | 0,611 | -38,93 | 798,2
+BL_classico_c10 | 20,44 | 20,20 | 0,563 | -33,60 | 629,4
+BL_downside | 22,91 | 32,17 | 0,514 | -57,41 | 948,2
+EqualWeight_BuyHold (1/N comprar-e-manter) | 17,28 | 19,28 | 0,443 | -33,00 | 0,0
+MaxSharpe (máxima utilidade) | 13,96 | 17,54 | 0,305 | -22,76 | 121,9
+MinVar (mínima variância) | 13,00 | 12,95 | 0,293 | -25,05 | 80,1
+EqualWeight (1/N rebalanceada) | 13,91 | 19,56 | 0,290 | -35,54 | 82,9
+IBOVESPA (benchmark) | 11,26 | 23,32 | 0,178 | -46,82 | —
+MinCDaR | 5,36 | 19,82 | -0,105 | -62,46 | 147,4
+
+=== Tabela 11 ===
+ATIVIDADES | ATIVIDADES | Março | Abril | Maio | Junho | Julho
+1 | Entrega da carta de aceite | X |  |  |  | 
+2 | Realização da matricula pela secretaria acadêmica | X |  |  |  | 
+3 | Definição do tema do projeto | X |  |  |  | 
+4 | Definição da estrutura | X |  |  |  | 
+5 | Realização do Tópico 1 do referencial teórico |  | X |  |  | 
+6 | Realização do Tópico 2 do referencial teórico |  | X |  |  | 
+7 | Introdução |  | X |  |  | 
+8 | Introdução Ajustes finais da introdução |  |  | X |  | 
+9 | Metodologia Definição do modelo e operacionalização da pesquisa |  |  | X |  | 
+10 | Metodologia Ajuste final da metodologia |  |  | X |  | 
+10 | Entrega - Formatação ABNT |  |  |  | X | 
+
+=== Tabela 12 ===
+Setor econômico (B3) | Nº de ativos | % do universo
+Consumo Cíclico | 20 | 19,6%
+Utilidade Pública | 16 | 15,7%
+Materiais Básicos | 16 | 15,7%
+Financeiro | 14 | 13,7%
+Bens Industriais | 11 | 10,8%
+Consumo Não Cíclico | 10 | 9,8%
+Saúde | 5 | 4,9%
+Comunicações | 4 | 3,9%
+Petróleo, Gás e Biocombustíveis | 3 | 2,9%
+Tecnologia da Informação | 3 | 2,9%
+Total | 102 | 100,0%
+
+=== Tabela 13 ===
+Posição | Ticker | Nome da Empresa | Setor (B3)
+1 | ABCB4 | Banco ABC Brasil S.A. | Financeiro
+2 | ABEV3 | Ambev S.A. | Consumo Não Cíclico
+3 | AGRO3 | BrasilAgro – Cia Brasileira de Propriedades Agrícolas | Consumo Não Cíclico
+4 | ALPA4 | Alpargatas S.A. | Consumo Cíclico
+5 | AMAR3 | Marisa Lojas S.A. | Consumo Cíclico
+6 | AXIA3 | Companhia de Participações Aliança da Bahia* | Utilidade Pública
+7 | AXIA6 | Companhia de Participações Aliança da Bahia* | Utilidade Pública
+8 | B3SA3 | B3 S.A. – Brasil, Bolsa, Balcão | Financeiro
+9 | BBAS3 | Banco do Brasil S.A. | Financeiro
+10 | BBDC3 | Banco Bradesco S.A. | Financeiro
+11 | BBDC4 | Banco Bradesco S.A. | Financeiro
+12 | BEEF3 | Minerva S.A. | Consumo Não Cíclico
+13 | BRAP4 | Bradespar S.A. | Materiais Básicos
+14 | BRKM5 | Braskem S.A. | Materiais Básicos
+15 | BRSR6 | Banco do Estado do Rio Grande do Sul S.A. – Banrisul | Financeiro
+16 | CGAS5 | Companhia de Gás de São Paulo – COMGÁS | Utilidade Pública
+17 | CLSC4 | Centrais Elétricas de Santa Catarina S.A. – CELESC | Utilidade Pública
+18 | CMIG3 | Companhia Energética de Minas Gerais – CEMIG | Utilidade Pública
+19 | CMIG4 | Companhia Energética de Minas Gerais – CEMIG | Utilidade Pública
+20 | COCE5 | Companhia Energética do Ceará – COELCE | Utilidade Pública
+21 | CPFE3 | CPFL Energia S.A. | Utilidade Pública
+22 | CPLE3 | Companhia Paranaense de Energia – COPEL | Utilidade Pública
+23 | CSAN3 | Cosan S.A. | Petróleo, Gás e Biocombustíveis
+24 | CSMG3 | Companhia de Saneamento de Minas Gerais – COPASA | Utilidade Pública
+25 | CSNA3 | Companhia Siderúrgica Nacional – CSN | Materiais Básicos
+26 | CSUD3 | Companhia Siderúrgica Nacional – CSN Mineração* | Materiais Básicos
+27 | CYRE3 | Cyrela Brazil Realty S.A. Empreendimentos e Participações | Consumo Cíclico
+28 | DXCO3 | Dexco S.A. | Materiais Básicos
+29 | EGIE3 | Engie Brasil Energia S.A. | Utilidade Pública
+30 | EMBJ3 | Empresa Elétrica Bragantina S.A.* | Utilidade Pública
+31 | ENEV3 | Eneva S.A. | Utilidade Pública
+32 | EQTL3 | Equatorial Energia S.A. | Utilidade Pública
+33 | EUCA4 | Eucatex S.A. Indústria e Comércio | Materiais Básicos
+34 | EVEN3 | Even Construtora e Incorporadora S.A. | Consumo Cíclico
+35 | EZTC3 | EZTEC Empreendimentos e Participações S.A. | Consumo Cíclico
+36 | FESA4 | Cia de Ferro Ligas da Bahia – FERBASA | Materiais Básicos
+37 | FHER3 | Fertilizantes Heringer S.A. | Consumo Não Cíclico
+38 | FLRY3 | Fleury S.A. | Saúde
+39 | GFSA3 | Gafisa S.A. | Consumo Cíclico
+40 | GGBR3 | Gerdau S.A. | Materiais Básicos
+41 | GGBR4 | Gerdau S.A. | Materiais Básicos
+42 | GOAU4 | Metalúrgica Gerdau S.A. | Materiais Básicos
+43 | GRND3 | Grendene S.A. | Consumo Cíclico
+44 | HAGA4 | Companhia Haga S.A.* | Bens Industriais
+45 | HBOR3 | Helbor Empreendimentos S.A. | Consumo Cíclico
+46 | HYPE3 | Hypera S.A. | Saúde
+47 | INEP4 | Inepar Indústria e Construções S.A. | Bens Industriais
+48 | ISAE4 | ISA Cteep – Cia de Transmissão de Energia Elétrica Paulista | Utilidade Pública
+49 | ITSA3 | Itaúsa S.A. | Financeiro
+50 | ITSA4 | Itaúsa S.A. | Financeiro
+51 | ITUB3 | Itaú Unibanco Holding S.A. | Financeiro
+52 | ITUB4 | Itaú Unibanco Holding S.A. | Financeiro
+53 | JHSF3 | JHSF Participações S.A. | Consumo Cíclico
+54 | KEPL3 | Kepler Weber S.A. | Bens Industriais
+55 | KLBN4 | Klabin S.A. | Materiais Básicos
+56 | LAND3 | Terra Santa Propriedades Agrícolas S.A. | Consumo Não Cíclico
+57 | LOGN3 | Log-In Logística Intermodal S.A. | Bens Industriais
+58 | LPSB3 | LPS Brasil – Consultoria de Imóveis S.A. | Consumo Cíclico
+59 | LREN3 | Lojas Renner S.A. | Consumo Cíclico
+60 | MBRF3 | MBRF Global Foods Company S.A. | Consumo Não Cíclico
+61 | MDIA3 | M. Dias Branco S.A. Ind. e Com. de Alimentos | Consumo Não Cíclico
+62 | MOTV3 | Telequality Participações S.A.* | Comunicações
+63 | MRVE3 | MRV Engenharia e Participações S.A. | Consumo Cíclico
+64 | MULT3 | Multiplan Empreendimentos Imobiliários S.A. | Consumo Cíclico
+65 | MYPK3 | Iochpe-Maxion S.A. | Bens Industriais
+66 | NATU3 | Natura Cosméticos S.A. | Consumo Não Cíclico
+67 | ODPV3 | Odontoprev S.A. | Saúde
+68 | PETR3 | Petróleo Brasileiro S.A. – Petrobras | Petróleo, Gás e Biocombustíveis
+69 | PETR4 | Petróleo Brasileiro S.A. – Petrobras | Petróleo, Gás e Biocombustíveis
+70 | PFRM3 | Profarma Distribuidora de Produtos Farmacêuticos S.A. | Saúde
+71 | PINE4 | Banco Pine S.A. | Financeiro
+72 | POMO4 | Marcopolo S.A. | Bens Industriais
+73 | POSI3 | Positivo Tecnologia S.A. | Tecnologia da Informação
+74 | PSSA3 | Porto Seguro S.A. | Financeiro
+75 | RADL3 | Raia Drogasil S.A. | Saúde
+76 | RAPT4 | Randon S.A. Implementos e Participações | Bens Industriais
+77 | RDNI3 | RDI Negócios Imobiliários S.A.* | Consumo Cíclico
+78 | RENT3 | Localiza Rent a Car S.A. | Consumo Cíclico
+79 | RIAA3 | Guararapes Confecções S.A. | Consumo Cíclico
+80 | ROMI3 | Indústrias Romi S.A. | Bens Industriais
+81 | SANB11 | Banco Santander (Brasil) S.A. | Financeiro
+82 | SANB4 | Banco Santander (Brasil) S.A. | Financeiro
+83 | SBSP3 | Cia de Saneamento Básico do Estado de São Paulo – SABESP | Utilidade Pública
+84 | SCAR3 | São Carlos Empreendimentos e Participações S.A. | Consumo Cíclico
+85 | SLCE3 | SLC Agrícola S.A. | Consumo Não Cíclico
+86 | SMTO3 | São Martinho S.A. | Consumo Não Cíclico
+87 | TASA4 | Tensacalho S.A.* | Materiais Básicos
+88 | TCSA3 | Tecnisa S.A. | Consumo Cíclico
+89 | TELB4 | Telecomunicações Brasileiras S.A. – Telebras | Comunicações
+90 | TGMA3 | Tegma Gestão Logística S.A. | Bens Industriais
+91 | TIMS3 | TIM S.A. | Comunicações
+92 | TOTS3 | Totvs S.A. | Tecnologia da Informação
+93 | TPIS3 | Triunfo Participações e Investimentos S.A. | Bens Industriais
+94 | TRIS3 | Trisul S.A. | Consumo Cíclico
+95 | UNIP6 | Unipar Carbocloro S.A. | Materiais Básicos
+96 | USIM3 | Usinas Siderúrgicas de Minas Gerais S.A. – USIMINAS | Materiais Básicos
+97 | USIM5 | Usinas Siderúrgicas de Minas Gerais S.A. – USIMINAS | Materiais Básicos
+98 | VALE3 | Vale S.A. | Materiais Básicos
+99 | VIVT3 | Telefônica Brasil S.A. (VIVO) | Comunicações
+100 | VLID3 | Valid Soluções S.A. | Tecnologia da Informação
+101 | WEGE3 | WEG S.A. | Bens Industriais
+102 | YDUQ3 | Yduqs Participações S.A. | Consumo Cíclico

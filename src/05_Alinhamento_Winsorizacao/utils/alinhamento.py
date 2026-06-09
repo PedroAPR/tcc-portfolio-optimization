@@ -1,55 +1,35 @@
-"""Sincronismo de índices temporais e alinhamento cronológico.
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
+from pathlib import Path
 
-Módulo de Alinhamento: isola a lógica de interseção de calendários
-e consolidação temporal do painel multi-ativos.
-"""
-from __future__ import annotations
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-import pandas as pd
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
 
-def obter_calendario_comum(dfs_ou_series: list[pd.DataFrame | pd.Series]) -> pd.DatetimeIndex:
-    """Retorna o índice cronológico ordenado da interseção de todas as séries."""
-    if not dfs_ou_series:
-        raise ValueError("A lista de DataFrames/Séries não pode estar vazia.")
-    
-    # Inicializa o calendário com o índice do primeiro elemento
-    calendario = dfs_ou_series[0].index
-    
-    # Executa a interseção sucessiva com todos os outros elementos
-    for item in dfs_ou_series[1:]:
-        calendario = calendario.intersection(item.index)
-        
-    return pd.DatetimeIndex(calendario).sort_values()
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.alinhamento"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
 
-
-def alinhar_painel(
-    precos_acoes: pd.DataFrame,
-    ibov_close: pd.Series,
-    cdi_diario: pd.Series,
-    selic_diario: pd.Series,
-    calendario: pd.DatetimeIndex
-) -> pd.DataFrame:
-    """Reindexa todos os componentes para o calendário comum e os concatena.
-
-    Garante que não restem valores nulos (NaN) no painel consolidado.
-    """
-    # Reindexa as ações e adiciona o prefixo ACAO_
-    acoes_alinhadas = precos_acoes.reindex(calendario)
-    acoes_alinhadas.columns = [f"ACAO_{c}" if not c.startswith("ACAO_") else c for c in acoes_alinhadas.columns]
-    
-    # Reindexa os benchmarks
-    ibov_alinhado = ibov_close.reindex(calendario).rename("IBOV_close")
-    cdi_alinhado = cdi_diario.reindex(calendario).rename("CDI_diario")
-    selic_alinhado = selic_diario.reindex(calendario).rename("SELIC_diario")
-    
-    # Concatena todos os ativos
-    painel = pd.concat([ibov_alinhado, cdi_alinhado, selic_alinhado, acoes_alinhadas], axis=1)
-    painel.index.name = "data"
-    
-    # Valida presença de NaNs
-    n_nan = int(painel.isna().sum().sum())
-    if n_nan > 0:
-        raise ValueError(f"Ocorreu a introdução de {n_nan} NaNs no painel durante o alinhamento.")
-        
-    return painel
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

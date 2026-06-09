@@ -1,36 +1,35 @@
-"""Conversões de taxas e preços (puras, sem efeitos colaterais).
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
+from pathlib import Path
 
-Reúne as transformações matemáticas aplicadas a preços e taxas, isolando a
-conversão de retornos e a convenção de anualização do restante do pipeline.
-"""
-from __future__ import annotations
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-import numpy as np
-import pandas as pd
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
-from .config_loader import TRADING_DAYS
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
 
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.conversoes"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
 
-def anualizar(taxa_diaria_pct, trading_days: int = TRADING_DAYS):
-    """Anualiza uma taxa expressa em percentual ao dia (% a.d.).
-
-    Aceita escalar ou `pandas.Series`/`numpy.ndarray`.
-    Convenção: (1 + r_d)^252 - 1, com r_d em fração.
-    """
-    return ((1 + taxa_diaria_pct / 100) ** trading_days - 1) * 100
-
-
-def para_fracao_diaria(taxa_diaria_pct):
-    """Converte taxa em percentual ao dia para fração decimal (÷100)."""
-    return taxa_diaria_pct / 100
-
-
-def calcular_retornos_simples(precos: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
-    """Calcula os retornos discretos (simples) diários, removendo a primeira linha (NaN)."""
-    return precos.pct_change().iloc[1:]
-
-
-def calcular_retornos_log(precos: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
-    """Calcula os log-retornos contínuos diários, removendo a primeira linha (NaN)."""
-    return np.log(precos).diff().iloc[1:]
-
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

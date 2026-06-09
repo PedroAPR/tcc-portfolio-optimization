@@ -1,0 +1,6 @@
+ticker,empresa,evento,natureza_extremo,decisao
+FICT3,Fictor Alimentos (ex-ATOM3),IPO reverso (troca de controle/ticker) + RJ da holding (2026); penny stock < R$1,Distress real + mudanca de base acionaria,Manter (ativo real)
+GOLL54,Gol Linhas Aereas,Reestruturacao/distress (2024-25); salto +1847% = provavel grupamento nao-ajustado,Artefato de evento (denominador ~centavo),Manter; ideal ajustar preco a montante pelo grupamento
+LUPA3,Lupatech,RJ 2015-2023 c/ conversao de ~85% da divida em acoes (forte diluicao); nova RE 2026,Diluicao/distress real,Manter
+TELB4,Telebras (PN),Multiplos splits/grupamentos no historico; liquidez muito baixa,Artefato de split/grupamento + iliquidez,Manter; conferir datas
+AMER3,Americanas,Fraude contabil 11/01/2023 -> RJ 19/01/2023; grupamento 100:1 em ago/2024,Crash real (fraude) + nivel ajustado inflado pelo inplit 100:1,Manter (anti-sobrevivencia)

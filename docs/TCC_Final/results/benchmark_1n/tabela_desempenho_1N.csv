@@ -1,0 +1,5 @@
+Estratégia;Retorno Acumulado;CAGR;Volatilidade Anual;Índice de Sharpe;Índice de Sortino;Max. Drawdown;VaR Diário 95%;CVaR Diário 95%;Calmar Ratio;Turnover Médio
+1/N Buy-and-Hold;340.01%;14.66%;21.09%;0.2333;0.2831;-48.90%;-1.8410%;-3.0324%;0.2998;0.00%
+1/N Rebalanceamento Mensal;267.69%;12.78%;23.65%;0.1283;0.1579;-51.47%;-2.0364%;-3.3325%;0.2482;5.08%
+IBOVESPA;232.13%;11.72%;23.32%;0.0849;0.1111;-46.82%;-2.1724%;-3.2815%;0.2504;—
+CDI;173.64%;9.74%;0.24%;-0.0013;—;0.00%;0.0075%;0.0075%;—;—

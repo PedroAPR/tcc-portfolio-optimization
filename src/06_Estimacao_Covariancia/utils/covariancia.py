@@ -1,83 +1,35 @@
-import numpy as np
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
+from pathlib import Path
 
-def condicionamento(S):
-    """Calcula o número de condição (κ) de uma matriz simétrica S.
-    Definido como a razão entre o maior e o menor autovalor.
-    
-    Args:
-        S (np.ndarray): Matriz simétrica.
-        
-    Returns:
-        tuple[float, float]: (número de condição, menor autovalor).
-    """
-    ev = np.linalg.eigvalsh(S)
-    menor_ev = max(ev.min(), 1e-18)
-    return ev.max() / menor_ev, ev.min()
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-def ledoit_wolf(X):
-    """Estimador de encolhimento (shrinkage) ótimo de Ledoit e Wolf (2004).
-    Regulariza a matriz de covariância amostral combinando-a de forma convexa
-    com um alvo de variância média estruturado (identidade escalada).
-    
-    A implementação é totalmente vetorizada em NumPy, substituindo o loop O(T) original.
-    
-    Args:
-        X (np.ndarray): Matriz T x N de retornos históricos (simples).
-        
-    Returns:
-        tuple[np.ndarray, float]: (Matriz de covariância encolhida diária, delta).
-    """
-    X = np.asarray(X, float)
-    T, N = X.shape
-    if T <= 1:
-        raise ValueError("O número de observações (T) deve ser maior que 1.")
-        
-    # Centralização dos dados
-    Xc = X - X.mean(axis=0)
-    
-    # Covariância amostral com ddof=0 para manter paridade exata com sklearn
-    S = (Xc.T @ Xc) / T
-    
-    # Alvo F: identidade escalada pela média do traço
-    mu = np.trace(S) / N
-    F = mu * np.eye(N)
-    
-    # d2: ||S - F||_F^2 normalizada por N
-    d2 = np.sum((S - F) ** 2) / N
-    if d2 == 0:
-        return S, 0.0
-        
-    # b2bar: Cálculo ultra-veloz e vetorizado de b2bar (sem loop Python)
-    # Equivalente à média temporal de ||x_t x_t^T - S||_F^2 / N
-    term1 = np.sum(np.sum(Xc ** 2, axis=1) ** 2)
-    term2 = T * np.sum(S ** 2)
-    b2bar = (term1 - term2) / (T ** 2 * N)
-    
-    # Garante restrição assintótica de variância
-    b2 = min(b2bar, d2)
-    
-    # Intensidade do encolhimento
-    delta = b2 / d2
-    
-    # Combinação convexa regularizada
-    Sigma_shrunk = delta * F + (1.0 - delta) * S
-    return Sigma_shrunk, delta
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
-def estimar_sigma(janela_retornos, metodo="ledoit_wolf", trading_days=252):
-    """Helper para obter a matriz de covariância anualizada de uma janela de retornos simples.
-    
-    Args:
-        janela_retornos (np.ndarray): Janela temporal de retornos simples (T x N).
-        metodo (str): Método de estimação ("ledoit_wolf" ou "amostral").
-        trading_days (int): Dias úteis no ano para anualização (padrão 252).
-        
-    Returns:
-        np.ndarray: Matriz de covariância anualizada (N x N).
-    """
-    if metodo == "amostral":
-        # np.cov usa ddof=1 por padrão para estatística clássica amostral
-        return np.cov(janela_retornos, rowvar=False) * trading_days
-    
-    # Ledoit-wolf usa ddof=0 internamente
-    S, _ = ledoit_wolf(janela_retornos)
-    return S * trading_days
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
+
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.covariancia"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
+
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

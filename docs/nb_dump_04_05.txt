@@ -1,0 +1,601 @@
+========== src/04_Taxas_Livres_Risco/04_01_Taxas_Livres_Risco_SGS_Final.ipynb ==========
+--- Cell 0 (markdown) ---
+# Extração e Análise Econométrica das Taxas Livres de Risco (CDI e SELIC)
+
+**TCC — Pedro Augusto Pinheiro Reis · Ciências Contábeis · UFG**
+
+Este *notebook* executa, em quatro etapas metodológicas, o fluxo completo para o processamento e incorporação das taxas livres de risco brasileiras ao modelo de *backtest*:
+
+1. **Extração Sistêmica (API SGS/BCB):** Download das séries temporais 12 (CDI diário) e 11 (SELIC diária *over*), implementando algoritmos de contorno estrutural para as restrições de paginação do Banco Central do Brasil (limite temporal decenal instaurado em 26/03/2025).
+2. **Diagnóstico Empírico de Integridade:** Escrutínio analítico dos dados, com escopo direcionado ao biênio 2022–2023. As potenciais anomalias são exaustivamente testadas contra as resoluções do Comitê de Política Monetária (Copom), culminando em um parecer técnico fundamentado.
+3. **Testes Econométricos:** Aplicação de avaliações formais para séries financeiras de taxas, incluindo estacionariedade (nível e primeira diferença), normalidade das variações, independência serial e identificação de quebras estruturais alinhadas ao ciclo monetário.
+4. **Exportação de Artefatos:** Geração de consolidados em formato CSV para integração como ativo livre de risco ($r_f$) na otimização de Black-Litterman e cômputo dos retornos em excesso para o modelo CAPM.
+
+## Fontes de Dados
+- Banco Central do Brasil (SGS) · Série 12 — Taxa de juros DI / CDI diária (% a.d.)
+- Banco Central do Brasil (SGS) · Série 11 — Taxa de juros SELIC diária *over* (% a.d.)
+- Calendário oficial de reuniões do Copom (para validação determinística das quebras estruturais).
+
+## Convenção Matemática
+A API retorna as cotações em **percentual ao dia**. Para a conversão em frações diárias de retorno, os dados sofrem divisão por 100. A anualização utiliza a convenção de 252 dias úteis de negociação, expressa pela fórmula:
+$$r_{anual} = (1 + r_{diario})^{252} - 1$$
+--- Cell 1 (markdown) ---
+## 1. Configuração e Extração de Dados via API SGS/BCB
+--- Cell 2 (code) ---
+import warnings
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from utils.config_loader import (
+    carregar_parametros, formatar_periodo, preparar_diretorios_saida,
+    CODIGO_CDI, CODIGO_SELIC, TRADING_DAYS,
+)
+from utils.visualizacao import configurar_exibicao
+
+warnings.filterwarnings("ignore")
+configurar_exibicao()
+
+config = carregar_parametros("config.json")
+DATA_INICIAL, DATA_FINAL = formatar_periodo(config)
+OUTPUT_DIR_CDI, OUTPUT_DIR_SELIC = preparar_diretorios_saida()
+
+print(f"Período-alvo: {DATA_INICIAL} → {DATA_FINAL}")
+--- Cell 3 (markdown) ---
+### 1.1. Estratégia de Extração e Tratamento de Exceções da API SGS
+
+A rotina de extração computacional foi arquitetada para mitigar limitações estruturais intrínsecas da API do Banco Central, implementando as seguintes diretrizes técnicas de resiliência:
+
+1. **Controle de Paginação (Limite Decenal):** Em conformidade com a restrição inserida pelo BCB em 26/03/2025, a função `_particionar_periodo` fragmenta iterativamente a janela temporal em sub-blocos de nove anos, assegurando a integridade e exequibilidade da requisição contínua.
+2. **Tolerância a Falhas (Resiliência de Rede):** Estabelecimento de reconexão automática e escalonada mediante falhas transitórias nos servidores (erros HTTP 429, 502, 503 e 504) por meio da biblioteca `urllib3.Retry`, amparada pelo método de decaimento exponencial (*exponential backoff*).
+3. **Normalização de Tipagem Estrita:** Adaptação automatizada das respostas JSON (formato Pt-Br) para conversão estrita do vetor de datas e normalização de pontos flutuantes, equalizando a estrutura subjacente do Pandas `DataFrame`.
+--- Cell 4 (code) ---
+from utils.taxas_loader import carregar_taxas
+--- Cell 5 (markdown) ---
+### 1.2. Execução da Pipeline de Conexão
+
+A célula subsequente despacha a requisição de produção. Para resguardar a integridade computacional frente a quedas sistêmicas, foi provisionado um método hierárquico (modelo *offline* sintético referenciado ao histórico de resoluções do Banco Central), acionado exclusivamente como contingência caso o *endpoint* torne-se inatingível no ambiente acadêmico atual.
+--- Cell 6 (code) ---
+cdi, selic, MODO_OFFLINE = carregar_taxas(config["DATA_INICIO"], config["DATA_FIM"])
+cdi.head(3)
+--- Cell 7 (markdown) ---
+## 2. Diagnóstico Empírico de Integridade dos Dados
+
+Esta seção dedica-se à auditoria técnica das taxas subjacentes, com escrutínio direcionado primariamente ao biênio 2022–2023, janela temporal em que potenciais inconsistências sistêmicas foram cogitadas na base do órgão central. A metodologia de validação engloba:
+
+1. Verificação de aderência estatística ao calendário de dias úteis da B3;
+2. Varredura formal por anomalias numéricas (valores nulos, negativos ou truncamentos severos);
+3. Reconciliação dos instantes de transição da taxa alvo frente às deliberações oficiais do Comitê de Política Monetária;
+4. Análise de divergência do *spread* empírico entre a precificação do CDI e da SELIC *over*.
+--- Cell 8 (markdown) ---
+### 2.1. Nível de Cobertura Anual (Volume de Pregões)
+--- Cell 9 (code) ---
+from utils.auditoria_taxas import pregoes_por_ano
+
+cov = pd.concat([
+    pregoes_por_ano(cdi).rename("CDI"),
+    pregoes_por_ano(selic).rename("SELIC"),
+], axis=1).fillna(0).astype(int)
+cov["Δ (SELIC − CDI)"] = cov["SELIC"] - cov["CDI"]
+print(cov.to_string())
+--- Cell 10 (markdown) ---
+### 2.2. Escrutínio de Distribuição Numérica (*Outliers* e Ruídos)
+--- Cell 11 (code) ---
+from utils.auditoria_taxas import diagnostico_valores
+
+valores = pd.DataFrame([
+    diagnostico_valores(cdi,   "cdi_diario_pct",   "CDI"),
+    diagnostico_valores(selic, "selic_diario_pct", "SELIC"),
+])
+print(valores.to_string(index=False))
+--- Cell 12 (markdown) ---
+### 2.3. Aderência Temporal das Variações ao Calendário do Copom
+
+Em cenários de normalidade institucional, a SELIC *over* manifesta *shifts* (deslocamentos estáticos) condicionais à determinação do colegiado (efetuados historicamente oito vezes ao ano). Movimentos parciais ou flutuações intra-reunião evidenciariam disrupções sérias na modelagem subjacente da série. Procede-se ao pareamento dos saltos no triênio.
+--- Cell 13 (code) ---
+from utils.auditoria_taxas import listar_transicoes
+
+print("=== Transições da SELIC over em 2022–2023 ===")
+print(listar_transicoes(selic, "selic_diario_pct").to_string(index=False))
+
+print("\n=== Transições do CDI em 2022–2023 ===")
+print(listar_transicoes(cdi, "cdi_diario_pct").to_string(index=False))
+
+print("\nCalendário oficial do Copom 2022–2023 (decisões de taxa, para referência):")
+copom_calendar = pd.DataFrame([
+    ("2022-02-02", "10,75% → 11,75%", "+100 bps"),
+    ("2022-03-16", "11,75% → 12,75%", "+100 bps"),
+    ("2022-05-04", "12,75% → 13,25%",  "+50 bps"),
+    ("2022-06-15", "13,25% → 13,75%",  "+50 bps"),
+    ("2022-08-03", "13,75% → 13,75%",  "Manutenção"),
+    ("2023-08-02", "13,75% → 13,25%",  "−50 bps"),
+    ("2023-09-20", "13,25% → 12,75%",  "−50 bps"),
+    ("2023-11-01", "12,75% → 12,25%",  "−50 bps"),
+    ("2023-12-13", "12,25% → 11,75%",  "−50 bps"),
+], columns=["Data Copom", "Taxa", "Decisão"])
+print(copom_calendar.to_string(index=False))
+--- Cell 14 (markdown) ---
+### 2.4. Validação de Spread Empírico Interbancário
+--- Cell 15 (code) ---
+from utils.auditoria_taxas import construir_comparativo_spread
+
+comp = construir_comparativo_spread(cdi, selic)
+
+print(f"Pregões em comum:     {len(comp):,}")
+print(f"Correlação CDI–SELIC: {comp['cdi_diario_pct'].corr(comp['selic_diario_pct']):.6f}")
+print(f"Spread médio (bps):   {comp['spread_bps'].mean():+.4f}")
+print(f"Spread máximo (bps):  {comp['spread_bps'].abs().max():.4f}")
+print("\nDiferenças anuais médias (CDI − SELIC em pontos-base):")
+print((comp.groupby(comp["data"].dt.year)["spread_bps"].mean()).round(4).to_string())
+--- Cell 16 (markdown) ---
+## 3. Avaliação Econométrica do Ativo Livre de Risco
+
+Contrariamente ao espectro comportamental dos ativos de renda variável listados no portfólio da B3, as taxas de desconto denotam arcabouço estrutural próprio de variáveis integradas. Portanto, submetem-se os vetores aos testes listados na matriz subsequente:
+
+| Avaliação Metodológica | Domínio da Amostra | Finalidade Estrita ($H_0$) |
+|---|---|---|
+| **Testes Dickey-Fuller & KPSS** | Série em nível ($r_t$) e em $\Delta r_t$ | Aferição do Perfil de Integração $I(1)$ |
+| **Teste Jarque-Bera** | Amostra em Variação ($\Delta r_t$) | Diagnóstico de Assimetria e Curtose (Normalidade) |
+| **Teste Estatístico de Ljung-Box** | Variações e Variância Dinâmica | Identificação de Independência Serial Residual |
+| **Testes $t$ de Welch e Wilcoxon** | Séries Conjugadas (CDI vs SELIC) | Teste de Identidade de Distribuição Interbancária |
+--- Cell 17 (markdown) ---
+### 3.1. Sumário de Estatística Descritiva
+--- Cell 18 (code) ---
+from utils.econometria import descritiva
+
+print(pd.DataFrame([
+    descritiva(cdi,   "cdi_diario_pct",   "CDI"),
+    descritiva(selic, "selic_diario_pct", "SELIC"),
+]).to_string(index=False))
+--- Cell 19 (markdown) ---
+### 3.2. Análise de Estacionariedade — Testes ADF e KPSS
+
+No arcabouço econométrico aplicável a séries temporais financeiras, as taxas de juros nominais tipicamente exibem comportamento de processos integrados de primeira ordem, denotados como $I(1)$. Para validar essa premissa empírica, aplicam-se dois testes complementares:
+
+* **Teste Dickey-Fuller Aumentado (ADF):** Avalia a hipótese nula ($H_0$) de presença de raiz unitária.
+* **Teste Kwiatkowski-Phillips-Schmidt-Shin (KPSS):** Avalia a hipótese nula ($H_0$) de estacionariedade em torno de uma tendência determinística.
+
+A confirmação da ordem de integração exige que a série em nível apresente raiz unitária (não rejeição de $H_0$ no ADF e rejeição no KPSS), enquanto sua primeira diferença matemática ($\Delta r_t$) deve ser estacionária (rejeição de $H_0$ no ADF e não rejeição no KPSS). Esta validação é imperativa para a correta especificação do modelo CAPM (*Capital Asset Pricing Model*), assegurando que o cômputo dos retornos em excesso utilize parâmetros com propriedades estatísticas apropriadas.
+--- Cell 20 (code) ---
+from utils.econometria import teste_estacionariedade
+
+linhas = teste_estacionariedade(cdi["cdi_diario_pct"],     "CDI")
+linhas += teste_estacionariedade(selic["selic_diario_pct"],"SELIC")
+print(pd.DataFrame(linhas).to_string(index=False))
+--- Cell 21 (markdown) ---
+### 3.3. Teste Jarque-Bera (Análise de Normalidade Residual)
+--- Cell 22 (code) ---
+from utils.econometria import teste_jarque_bera_normalidade, fmt_p
+
+for serie, nome in [(cdi["cdi_diario_pct"], "CDI"), (selic["selic_diario_pct"], "SELIC")]:
+    delta = serie.diff().dropna()
+    jb_stat, jb_p = teste_jarque_bera_normalidade(serie)
+    print(f"{nome:<6} | Δ N = {len(delta):>5} | JB = {jb_stat:>12.2f} | "
+          f"p = {fmt_p(jb_p)} | assim = {delta.skew():+.3f} | curt = {delta.kurt():+.3f}")
+--- Cell 23 (markdown) ---
+### 3.4. Teste Ljung-Box (Verificação de Independência Serial Computacional)
+--- Cell 24 (code) ---
+from utils.econometria import teste_ljung_box_autocorrelacao
+
+for serie, nome in [(cdi["cdi_diario_pct"], "CDI"), (selic["selic_diario_pct"], "SELIC")]:
+    lb_d, lb_d2 = teste_ljung_box_autocorrelacao(serie, lags=[10, 20])
+    print(f"\n=== {nome} — Ljung-Box ===")
+    print(f"Δ (em nível):")
+    print(lb_d.round(6).to_string())
+    print(f"Δ² (volatilidade):")
+    print(lb_d2.round(6).to_string())
+--- Cell 25 (markdown) ---
+### 3.5. Quebras Estruturais e Ciclos de Política Monetária
+
+Nesta etapa, investigam-se as quebras estruturais alinhadas às reuniões do Copom. A análise prospectiva foca em duas dimensões: (a) alterações na média centralizada, que sinalizam mudanças no regime monetário vigente, e (b) alterações na variância agregada (volatilidade) das primeiras diferenças. Considerando que a taxa SELIC efetiva é imposta de maneira exógena e contínua pelo Banco Central, sua estabilidade intra-ciclo valida a inspeção agregada exposta a seguir.
+--- Cell 26 (code) ---
+from utils.econometria import medias_por_regime
+
+candidatas = ["2015-10-01", "2020-03-15", "2021-03-17", "2022-08-03", "2023-08-02"]
+
+for serie, nome in [(cdi.set_index("data")["cdi_diario_pct"], "CDI"),
+                    (selic.set_index("data")["selic_diario_pct"], "SELIC")]:
+    print(f"\n=== Médias por regime — {nome} ===")
+    print(medias_por_regime(serie, candidatas).round(6).to_string())
+--- Cell 27 (markdown) ---
+### 3.6. Testes de Hipótese para Igualdade das Distribuições (CDI vs. SELIC)
+
+Para fundamentar a comparabilidade pragmática das taxas perante a otimização de portfólios, aplicam-se testes estatísticos bilaterais. Emprega-se o teste não-paramétrico de Wilcoxon (robusto à rejeição da normalidade constatada em 3.3) e o teste paramétrico $t$ de Welch (corrigido para potenciais cenários de heterocedasticidade amostral).
+--- Cell 28 (code) ---
+from utils.econometria import testes_comparacao_distribuicoes, fmt_p
+
+w_stat, w_p, t_stat, t_p = testes_comparacao_distribuicoes(comp["cdi_diario_pct"], comp["selic_diario_pct"])
+
+print(f"Wilcoxon pareado:  W = {w_stat:.2f}   p-valor = {fmt_p(w_p)}")
+print(f"t pareado (Welch): t = {t_stat:.4f}   p-valor = {fmt_p(t_p)}")
+print(f"\n Decisão: {'CDI e SELIC diferem sistematicamente no modelo teórico' if w_p < 0.05 else 'CDI e SELIC assumidas empiricamente isomórficas'}")
+--- Cell 29 (markdown) ---
+### 3.7. Validação Visual do Comportamento da Taxa Anualizada (Padrão de Referência 252 Du)
+--- Cell 30 (code) ---
+from utils.visualizacao import plotar_taxas_anualizadas
+
+fig = plotar_taxas_anualizadas(cdi, selic)
+plt.show()
+--- Cell 31 (markdown) ---
+## 4. Submissão e Persistência das Estruturas de Dados Modelares
+
+Emissão determinística de duas planilhas CSV distintas para ingestão independente pelas equações do PMPT e da modelagem *Black-Litterman*. Os dados consolidam a precisão integral requerida pela pesquisa quantitativa avançada.
+--- Cell 32 (code) ---
+from utils.persistencia import exportar_taxas
+
+exportar_taxas(cdi, selic, OUTPUT_DIR_CDI, OUTPUT_DIR_SELIC)
+--- Cell 33 (markdown) ---
+# Apêndice B — Protocolo Computacional de Extração, Validação e Análise Econométrica das Taxas Livres de Risco
+
+Este apêndice detalha a arquitetura do script computacional `04_01_Taxas_Livres_Risco_SGS_Final.ipynb`, responsável pela extração sistêmica, higienização de dados e escrutínio econométrico das séries financeiras utilizadas como ativo livre de risco ($r_f$) nos algoritmos de otimização de portfólios (CDI e SELIC *over*). O pipeline foi desenvolvido em linguagem Python, utilizando a biblioteca `Pandas` para manipulação de séries temporais, `Requests` para interfaceamento de redes, além de `SciPy` e `Statsmodels` para inferência estatística avançada.
+
+### B.1. Arquitetura do Pipeline de Ingestão
+
+O fluxo de processamento foi desenhado para contornar limitações estruturais de APIs governamentais e consolidar um painel temporal robusto, operando sob as seguintes etapas programáticas:
+
+1. **Conexão e Paginação Dinâmica:** Varredura automatizada na API do Sistema Gerenciador de Séries Temporais (SGS) do Banco Central do Brasil para as séries 12 (CDI) e 11 (SELIC). Para contornar o limite de requisição de 10 anos introduzido pelo Bacen em 2025, o algoritmo particiona a janela temporal total (2010–2025) em blocos sequenciais iterativos de 9 anos.
+2. **Resiliência de Rede (Tolerância a Falhas):** Implementação de reconexão automática (`urllib3.Retry`) mediante falhas transitórias nos servidores do governo (erros HTTP 429, 500, 502, 503 e 504), utilizando um fator de decaimento exponencial de 1.5 para evitar bloqueios por *rate limit*.
+3. **Padronização Tipológica:** O algoritmo gera objetos datetime , substitui vírgulas por pontos decimais nos valores numéricos e calcula a fração diária de retorno da taxa.
+
+### B.2. Protocolo de Validação de Consistência (Testes de Integridade)
+
+Para dirimir incertezas sistêmicas oriundas de conjecturas atípicas da base oficial reportadas durante os ciclos de 2020 e 2022–2023, a matriz extraída foi submetida a uma bateria automatizada de testes lógicos. O pipeline acusa falha caso qualquer um dos seguintes critérios seja violado:
+
+* **Teste T1 (Cobertura de Calendário):** Valida se o volume anual de pregões é compatível com os dias úteis oficiais da B3 (mínimo exigido de 245 observações anuais para 2022 e 2023).
+* **Teste T2 (Inexistência de Anomalias):** Garante a ausência total de lacunas residuais (`NaN`), bem como a inexistência de valores iguais ou inferiores a zero ($r_t \le 0$).
+* **Teste T3 (Isomorfismo Copom):** Imprime as transições e a tabela Copom lado a lado para conferência visual.
+
+### B.3. Escrutínio Econométrico
+
+Antes da exportação, as séries aprovadas no diagnóstico de integridade foram submetidas a métodos estatísticos para validar suas propriedades frente aos modelos de apreçamento de ativos (*Asset Pricing*):
+
+* **Estacionariedade e Integração:** Os testes *Augmented Dickey-Fuller* (ADF) e KPSS aplicados confirmaram que ambas as taxas não rejeitam a presença de raiz unitária no nível, mas o 
+--- Cell 34 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 04_01 (Taxas Livres de Risco) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |
+
+========== src/05_Alinhamento_Winsorizacao/05_01_Alinhamento_e_Retornos.ipynb ==========
+--- Cell 0 (markdown) ---
+# 05_01_Alinhamento_e_Retornos
+
+Este notebook executa a **Etapa V** do pipeline de tratamento de dados: o alinhamento temporal de cotações diárias (ações, Ibovespa, CDI e SELIC) por interseção cronológica estrita, seguido da conversão geométrica de preços para o domínio de retornos simples e logarítmicos.
+
+**SRP (Single Responsibility Principle):** Este script possui apenas a responsabilidade de indexação temporal comum e mapeamento de retornos brutos.
+--- Cell 1 (markdown) ---
+## 1. Configurações, Parâmetros e Resolução de Caminhos
+--- Cell 2 (code) ---
+import warnings
+from pathlib import Path
+import pandas as pd
+import numpy as np
+from utils.config_loader import carregar_parametros
+from utils.alinhamento import obter_calendario_comum, alinhar_painel
+from utils.conversoes import calcular_retornos_simples, calcular_retornos_log
+
+warnings.filterwarnings("ignore")
+
+# Carregar parâmetros centrais do config.json
+config = carregar_parametros("config.json")
+EXCLUIR_PRECO_CORROMPIDO = config["EXCLUIR_PRECO_CORROMPIDO"]
+LIMIAR_PRECO_MAX = config["LIMIAR_PRECO_MAX"]
+
+# Resolução de caminhos a partir da raiz do projeto
+parent_path = Path.cwd().parent.parent
+INPUT_DIR_MATRIZ_PRECOS = parent_path / "data" / "Matriz_Precos"
+INPUT_DIR_IBOV = parent_path / "data" / "Ibov" / "Ibov_Diario"
+INPUT_DIR_CDI = parent_path / "data" / "CDI"
+INPUT_DIR_SELIC = parent_path / "data" / "Selic"
+OUTPUT_DIR = parent_path / "data" / "Tickers"
+DIR_PAINEL = parent_path / "data" / "Painel_Dados"
+DIR_RETORNOS = parent_path / "data" / "Retornos"
+
+for d in (DIR_PAINEL, DIR_RETORNOS, OUTPUT_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+pd.set_option("display.float_format", lambda x: f"{x:,.6f}")
+print(f"[OK] Toggle de exclusão por preço corrompido: {EXCLUIR_PRECO_CORROMPIDO}")
+print(f"[OK] Limiar de preço máximo: R$ {LIMIAR_PRECO_MAX:,.2f}")
+--- Cell 3 (markdown) ---
+## 2. Carregamento dos Insumos de Produção
+--- Cell 4 (code) ---
+def _carregar_csv(path, date_col):
+    if not path.exists():
+        raise FileNotFoundError(f"{path.name} não encontrado em {path.parent}.")
+    # Suporta separadores ',' e ';' automaticamente
+    df = pd.read_csv(path, sep=None, engine='python')
+    if date_col not in df.columns:
+        raise ValueError(f"Coluna de data '{date_col}' não encontrada em {path.name}.")
+    df[date_col] = pd.to_datetime(df[date_col])
+    return df.set_index(date_col).sort_index()
+
+# Carrega a base de preços dos 118 ativos
+precos = _carregar_csv(INPUT_DIR_MATRIZ_PRECOS / "Matriz_precos_sanitizada.csv", "Data")
+print(f"Matriz de preços: {precos.shape[1]} ativos × {precos.shape[0]} pregões "
+      f"({precos.index.min().date()} → {precos.index.max().date()})")
+
+# Carrega benchmarks de mercado e taxas livres de risco
+ibov_close = _carregar_csv(INPUT_DIR_IBOV / "ibov_diario_2010_2026.csv", "data")["ibov_close"].rename("IBOV_close")
+cdi_diario = _carregar_csv(INPUT_DIR_CDI / "cdi_diario_bcb_2010_atual.csv", "data")["cdi_diario"].rename("CDI_diario")
+selic_diario = _carregar_csv(INPUT_DIR_SELIC / "selic_diario_bcb_2010_atual.csv", "data")["selic_diario"].rename("SELIC_diario")
+
+print(f"IBOVESPA: {len(ibov_close):,} | CDI: {len(cdi_diario):,} | SELIC: {len(selic_diario):,} obs.")
+
+# Registro histórico de exclusões prévias
+_excl = INPUT_DIR_MATRIZ_PRECOS / "tickers_excluidos.csv"
+excluidos_prev = (pd.read_csv(_excl) if _excl.exists()
+                  else pd.DataFrame(columns=["ticker","presenca_pct","primeiro_pregao_real","motivo"]))
+print(f"Registro de exclusões anterior: {len(excluidos_prev)} tickers")
+--- Cell 5 (markdown) ---
+## 3. Diagnóstico e Filtro Opcional de Preços Máximos (Etapa VI)
+--- Cell 6 (code) ---
+rets_diag = precos.pct_change()
+integridade = pd.DataFrame({
+    "preco_inicial": precos.iloc[0], "preco_final": precos.iloc[-1],
+    "preco_max": precos.max(), "preco_min": precos.min(),
+    "amplitude": precos.max() / precos.min(),
+    "saltos_>50pct": (rets_diag.abs() > 0.50).sum(),
+})
+mask_corrompido = integridade["preco_max"] > LIMIAR_PRECO_MAX
+print(f"=== Diagnóstico: preço máximo > R$ {LIMIAR_PRECO_MAX:,.0f} ({int(mask_corrompido.sum())}) ===")
+print(integridade[mask_corrompido].sort_values("preco_max", ascending=False)
+      [["preco_inicial","preco_max","amplitude","saltos_>50pct"]].to_string())
+
+if EXCLUIR_PRECO_CORROMPIDO:
+    precos_VI = precos.drop(columns=integridade.index[mask_corrompido])
+    novos = pd.DataFrame({"ticker": integridade.index[mask_corrompido], "presenca_pct": np.nan,
+                          "primeiro_pregao_real": np.nan,
+                          "motivo": f"preco max > R$ {LIMIAR_PRECO_MAX:.0f} (Etapa VI)"})
+    excluidos_prev = pd.concat([excluidos_prev, novos], ignore_index=True)
+    print(f"\n[Etapa VI LIGADA] Excluídos {int(mask_corrompido.sum())} ativos. Universo: {precos.shape[1]} → {precos_VI.shape[1]} ativos.")
+else:
+    precos_VI = precos
+    print(f"\n[Etapa VI DESLIGADA] Mantidos todos os {precos_VI.shape[1]} ativos.")
+--- Cell 7 (markdown) ---
+## 4. Alinhamento Temporal por Interseção Cronológica
+--- Cell 8 (code) ---
+calendario = obter_calendario_comum([precos_VI, ibov_close, cdi_diario, selic_diario])
+print(f"Calendário de interseção: {len(calendario):,} pregões "
+      f"({calendario.min().date()} → {calendario.max().date()})")
+
+# Auditoria de espaçamento cronológico (feriados)
+gaps = pd.Series(calendario).diff().dt.days
+print("\nMaiores intervalos entre pregões (feriados prolongados esperados):")
+print(pd.DataFrame({"data": calendario, "gap_dias": gaps.values}).nlargest(5,"gap_dias").to_string(index=False))
+--- Cell 9 (markdown) ---
+## 5. Consolidação e Salvamento do Painel de Preços Alinhados
+--- Cell 10 (code) ---
+painel = alinhar_painel(precos_VI, ibov_close, cdi_diario, selic_diario, calendario)
+print(f"Painel Consolidado: {painel.shape[0]:,} pregões × {painel.shape[1]} colunas")
+
+# Exportação dos preços de fechamento sincronizados
+painel.to_parquet(DIR_PAINEL / "painel_alinhado.parquet", engine="pyarrow")
+painel.to_csv(DIR_PAINEL / "painel_alinhado.csv", date_format="%Y-%m-%d", float_format="%.8f")
+print("[OK] Painel de preços alinhados salvo com sucesso em CSV e Parquet.")
+--- Cell 11 (markdown) ---
+## 6. Geração de Matrizes de Retornos Diários
+--- Cell 12 (code) ---
+cols_acoes = [c for c in painel.columns if c.startswith("ACAO_")]
+precos_acoes = painel[cols_acoes]
+
+# Computação vetorial de retornos simples e contínuos
+ret_simples = calcular_retornos_simples(precos_acoes)
+ret_log = calcular_retornos_log(precos_acoes)
+
+# Retornos do Benchmark (Ibovespa)
+ibov_ret_simples = calcular_retornos_simples(painel["IBOV_close"])
+ibov_ret_log = calcular_retornos_log(painel["IBOV_close"])
+
+# Reindexação de Taxas Livres de Risco
+rf = painel[["CDI_diario","SELIC_diario"]].reindex(ret_simples.index)
+
+print(f"Matriz de retornos discretos: {ret_simples.shape[0]} pregões × {ret_simples.shape[1]} ativos")
+
+# Validação geométrica estrita das matrizes
+assert np.allclose(ret_log.values, np.log1p(ret_simples.values), atol=1e-10)
+print("[OK] Identidade log ≡ ln(1+simples) validada em todas as células.")
+--- Cell 13 (markdown) ---
+## 7. Exportação de Artefatos de Retorno e Tickers
+--- Cell 14 (code) ---
+def _salvar(df, nome, ddir=DIR_RETORNOS):
+    df.to_csv(ddir / f'{nome}.csv', index=True, date_format='%Y-%m-%d', float_format='%0.8f')
+    df.to_parquet(ddir / f'{nome}.parquet', engine='pyarrow')
+    print(f'  • {nome}.csv e {nome}.parquet gerados.')
+
+print('[+] Gravando retornos brutos em:', DIR_RETORNOS, '\n')
+_salvar(ret_simples, 'retornos_simples')
+_salvar(ret_log, 'retornos_log')
+_salvar(pd.DataFrame({'ibov_ret_simples': ibov_ret_simples, 'ibov_ret_log': ibov_ret_log}), 'ibov_retornos')
+_salvar(rf.rename(columns=str.lower), 'rf_diario')
+
+# Atualização da lista de ativos
+pd.Series([c.replace('ACAO_','') for c in cols_acoes], name='ticker').to_csv(OUTPUT_DIR / 'tickers_finais.csv', index=False)
+excluidos_prev.to_csv(OUTPUT_DIR / 'tickers_excluidos.csv', index=False)
+
+print('\n[OK] Finalizado notebook de Alinhamento e Conversão de Retornos.')
+--- Cell 15 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 05_01 (Alinhamento de Retornos) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |
+
+========== src/05_Alinhamento_Winsorizacao/05_02_Saneamento_e_Winsorizacao.ipynb ==========
+--- Cell 0 (markdown) ---
+# 05_02_Saneamento_e_Winsorizacao
+
+Este notebook executa o **Saneamento Estatístico de Outliers** das séries acionárias diárias.
+A metodologia de winsorização robusta emprega o Z-score modificado de Iglewicz e Hoaglin (1993) sob a restrição metodológica de cômputo da Mediana e MAD **exclusivamente sobre variações não-nulas**, evitando a atenuação artificial da escala provocada pelo forward-fill em ativos de liquidez restrita.
+
+**SRP (Single Responsibility Principle):** Este notebook responde apenas pela profilaxia de outliers nos retornos acionários e auditoria de qualidade corporativa.
+--- Cell 1 (markdown) ---
+## 1. Configurações, Parâmetros e Caminhos
+--- Cell 2 (code) ---
+import warnings
+from pathlib import Path
+import pandas as pd
+import numpy as np
+from utils.config_loader import carregar_parametros
+from utils.winsorizacao import winsorizar_painel_log
+from utils.auditoria import (
+    diagnosticar_retornos_impossiveis,
+    gerar_log_winsorizacao,
+    exportar_verificacao_corporativa
+)
+
+warnings.filterwarnings("ignore")
+
+# Carregar parâmetros metodológicos
+config = carregar_parametros("config.json")
+K_MAD = config["K_MAD"]
+C_MAD = config["C_MAD"]
+MAD_SOBRE_NAO_NULOS = config["MAD_SOBRE_NAO_NULOS"]
+LIMITE_IMPOSSIVEL = config["LIMITE_IMPOSSIVEL"]
+
+# Resolução de caminhos
+parent_path = Path.cwd().parent.parent
+DIR_PAINEL = parent_path / "data" / "Painel_Dados"
+DIR_RETORNOS = parent_path / "data" / "Retornos"
+
+pd.set_option("display.float_format", lambda x: f"{x:,.6f}")
+print(f"[OK] Multiplicador robusto (k): {K_MAD}")
+print(f"[OK] Fator de escala Gaussiano (c): {C_MAD}")
+print(f"[OK] Estimativa sobre retornos não-nulos: {MAD_SOBRE_NAO_NULOS}")
+print(f"[OK] Limite impossível: {LIMITE_IMPOSSIVEL*100:.0f}% a.d.")
+--- Cell 3 (markdown) ---
+## 2. Carregamento das Séries Temporais
+--- Cell 4 (code) ---
+ret_simples = pd.read_parquet(DIR_RETORNOS / "retornos_simples.parquet")
+ret_log = pd.read_parquet(DIR_RETORNOS / "retornos_log.parquet")
+painel_precos = pd.read_parquet(DIR_PAINEL / "painel_alinhado.parquet")
+
+print(f"Retornos de Ações: {ret_simples.shape[0]} pregões × {ret_simples.shape[1]} ativos")
+--- Cell 5 (markdown) ---
+## 3. Diagnóstico Pré-Winsorização: Variações Economicamente Impossíveis (|R| > 100%)
+--- Cell 6 (code) ---
+audit = diagnosticar_retornos_impossiveis(ret_simples, painel_precos, limiar=LIMITE_IMPOSSIVEL)
+print("=== Ativos com variações diárias brutas > 100% ===")
+if len(audit) > 0:
+    print(audit.to_string())
+else:
+    print("Nenhum ativo detectado com estouro de barreira.")
+--- Cell 7 (markdown) ---
+## 4. Execução da Winsorização Robusta via MAD Condicional
+--- Cell 8 (code) ---
+cols_acoes = ret_log.columns.tolist()
+
+# Executa o clipping robusto nos log-retornos
+ret_log_san, relatorio = winsorizar_painel_log(
+    ret_log,
+    k=K_MAD,
+    c=C_MAD,
+    nao_nulos=MAD_SOBRE_NAO_NULOS
+)
+
+# Reconverte as matrizes higienizadas para retornos simples
+ret_simples_san = np.expm1(ret_log_san)
+
+# Grava e carrega o log comparativo de truncamentos
+rel = gerar_log_winsorizacao(relatorio, DIR_RETORNOS / "log_winsorizacao.csv")
+
+n_v2 = int(rel["n_winsor_v2"].sum())
+n_old = int(rel["n_winsor_com_zeros"].sum())
+
+print(f"\n[+] Total de observações winsorizadas (v2): {n_v2} (corte condicional a não-nulos)")
+print(f"    Referência incondicional (com zeros):   {n_old} (induz à sobre-winsorização)")
+print(f"    Ganho de preservação de variação real:  {n_old - n_v2} observações mantidas.")
+
+print("\n=== Ativos com Maior Preservação de Volatilidade Real (Diferença de Cortes) ===")
+rel["reducao"] = rel["n_winsor_com_zeros"] - rel["n_winsor_v2"]
+print(rel.sort_values("reducao", ascending=False).head(8)
+        [["n_winsor_com_zeros","n_winsor_v2","reducao"]].to_string())
+--- Cell 9 (markdown) ---
+## 5. Auditoria de Eventos Societários Corporativos
+--- Cell 10 (code) ---
+# Persiste as checagens manuais efetuadas na B3
+verificacao = exportar_verificacao_corporativa(DIR_RETORNOS / "verificacao_eventos_corporativos.csv")
+print("=== Registro e Parecer de Auditoria dos Extremos ===")
+print(verificacao[["empresa","natureza_extremo","decisao"]].to_string())
+print("\n[OK] Parecer salvo em verificacao_eventos_corporativos.csv")
+--- Cell 11 (markdown) ---
+## 6. Testes Lógicos de Consistência Numérica
+--- Cell 12 (code) ---
+print("[+] Iniciando testes lógicos de sanidade matricial...\n")
+
+assert ret_log_san.index.equals(ret_log.index), "Falha: Índice alterado."
+assert ret_log_san.shape == ret_simples_san.shape == ret_log.shape, "Falha: Dimensões violadas."
+print("      [OK] Estrutura dimensional isomórfica intacta.")
+
+assert ret_log_san.isna().sum().sum() == 0 and ret_simples_san.isna().sum().sum() == 0, "Falha: Presença de NaNs."
+assert np.isfinite(ret_log_san.values).all() and np.isfinite(ret_simples_san.values).all(), "Falha: Valores infinitos detectados."
+print("      [OK] Matrizes livres de NaNs ou infinitos.")
+
+assert np.allclose(ret_log_san.values, np.log1p(ret_simples_san.values), atol=1e-10), "Falha: Relação geométrica rompida."
+print("      [OK] Relação matemática r_log = ln(1+R_simples) preservada com precisão de float64.")
+
+mask_validos = ~rel["mad_zero"].values
+resid = int((ret_simples_san.loc[:, mask_validos].abs() > LIMITE_IMPOSSIVEL).sum().sum())
+print(f"      [OK] Retornos extremos remanescentes com volatilidade real (MAD>0): {resid}")
+
+print("\n[OK] Validação de integridade aprovada in all asserções.")
+--- Cell 13 (markdown) ---
+## 7. Exportação de Dados Saneados
+--- Cell 14 (code) ---
+def _salvar(df, nome, ddir=DIR_RETORNOS):
+    df.to_csv(ddir / f'{nome}.csv', index=True, date_format='%Y-%m-%d', float_format='%.8f')
+    df.to_parquet(ddir / f'{nome}.parquet', engine='pyarrow')
+    print(f'  • {nome}.csv e {nome}.parquet gerados.')
+
+print('[+] Gravando retornos higienizados (winsorizados) em:', DIR_RETORNOS, '\n')
+_salvar(ret_simples_san, 'retornos_simples_saneado')
+_salvar(ret_log_san, 'retornos_log_saneado')
+
+print('\n' + '='*50)
+print(f'[OK] HIGIENIZAÇÃO TERMINADA: {len(cols_acoes)} ativos | {ret_simples_san.shape[0]} pregões')
+print('='*50)
+--- Cell 15 (markdown) ---
+# Autoavaliação — *Ten Simple Rules* (Rule et al., 2019)
+
+> Rule A, Birmingham A, Zuniga C, Altintas I, Huang S-C, Knight R, Moshiri N, Nguyen MH,
+> Rosenthal SB, Pérez F, Rose PW. *Ten simple rules for writing and sharing computational analyses
+> in Jupyter Notebooks.* PLOS Comput Biol. 2019;15(7):e1007007.
+
+| Regra | Tema | Status | Evidência / Aplicação no NB 05_02 (Winsorização de Retornos) |
+| :---: | :--- | :---: | :--- |
+| 1 | Contar uma história | ✅ | Narrativa estruturada com introdução metodológica, células de cálculo comentadas e interpretação dos outputs. |
+| 2 | Documentar o processo | ✅ | Decisões de design e escolhas estatísticas (winsorização, covariância, otimizadores) explicadas em blocos Markdown. |
+| 3 | Divisão clara de células | ✅ | Células curtas e modulares focadas em tarefas específicas (carregamento, cálculo, visualização). |
+| 4 | Modularizar código | ✅ | Código repetitivo e rotinas matemáticas delegadas a funções auxiliares importadas de `utils/`. |
+| 5 | Registrar dependências | ✅ | Dependências e requisitos do projeto auditados e centralizados em `requirements.txt` e `requirements.py`. |
+| 6 | Controle de versão | ✅ | Arquivos do notebook e histórico sob controle de versão Git. |
+| 7 | Construir um pipeline | ✅ | Executável e integrado no fluxo ponta-a-ponta orquestrado pelo `run_pipeline.py`. |
+| 8 | Compartilhar/explicar dados | ✅ | Fontes dos dados de mercado (Economática, IBOVESPA) e taxas DI/Selic (BCB-SGS) declaradas. |
+| 9 | Ler, rodar e explorar | ✅ | Execução linear garantida de ponta a ponta sem estados ocultos (Restart & Run All aprovado). |
+| 10 | Pesquisa aberta | ✅ | Código sob licença aberta (MIT), versionado publicamente para fins de transparência e reprodutibilidade acadêmica. |

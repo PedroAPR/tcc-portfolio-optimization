@@ -1,49 +1,35 @@
-"""Orquestração da ingestão das taxas livres de risco (CDI e SELIC over).
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
+from pathlib import Path
 
-Módulo de orquestração/I-O: combina a extração via API SGS com o fallback
-offline, padroniza nomes de colunas e acrescenta a fração diária decimal.
-Emite log de progresso (aceitável em camada de I/O).
-"""
-from __future__ import annotations
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-import pandas as pd
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
-from .config_loader import CODIGO_CDI, CODIGO_SELIC
-from .conversoes import para_fracao_diaria
-from .sgs_api import baixar_serie_sgs, fallback_offline_bcb
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
 
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.taxas_loader"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
 
-def _padronizar(df: pd.DataFrame, col_pct: str, col_frac: str) -> pd.DataFrame:
-    """Renomeia a coluna `valor` e acrescenta a fração diária decimal."""
-    df = df.rename(columns={"valor": col_pct})
-    df[col_frac] = para_fracao_diaria(df[col_pct])
-    return df
-
-
-def carregar_taxas(data_inicio: str, data_fim: str) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
-    """Baixa CDI (série 12) e SELIC over (série 11), com contingência offline.
-
-    Devolve `(cdi, selic, modo_offline)`. Em caso de falha na API, recorre ao
-    gerador sintético baseado no calendário Copom e sinaliza `modo_offline=True`.
-    As colunas resultantes são `data`, `<serie>_diario_pct` e `<serie>_diario`.
-    """
-    try:
-        print(">>> Baixando CDI (série 12)...")
-        cdi = baixar_serie_sgs(CODIGO_CDI, data_inicio, data_fim)
-        print(f"    Total: {len(cdi):,} observações\n")
-
-        print(">>> Baixando SELIC over (série 11)...")
-        selic = baixar_serie_sgs(CODIGO_SELIC, data_inicio, data_fim)
-        print(f"    Total: {len(selic):,} observações")
-        modo_offline = False
-    except Exception as e:
-        print(f"\nERRO no download: {type(e).__name__}: {e}")
-        cdi, selic = fallback_offline_bcb()
-        modo_offline = True
-
-    cdi = _padronizar(cdi, "cdi_diario_pct", "cdi_diario")
-    selic = _padronizar(selic, "selic_diario_pct", "selic_diario")
-
-    print(f"\nCDI:   {cdi['data'].min().date()} → {cdi['data'].max().date()}  ({len(cdi):,} obs.)")
-    print(f"SELIC: {selic['data'].min().date()} → {selic['data'].max().date()}  ({len(selic):,} obs.)")
-    return cdi, selic, modo_offline
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

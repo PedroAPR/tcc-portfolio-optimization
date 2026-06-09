@@ -1,0 +1,13 @@
+Estratégia,Teste,H₀,Estat.,p-valor,Decisão,Observação
+EqualWeight,Jobson-Korkie/Memmel,SR_strat = SR_IBOV,-1.5574087012000852,0.11937348159893757,Não rejeita H₀ ✗,Retornos reais da estratégia
+EqualWeight,"CAPM α (NW, rf variável)",α = 0,-1.4843892268761456,0.13770569113568182,Não rejeita H₀ ✗,Retornos reais da estratégia
+EqualWeight,Spanning Huberman-Kandel (F),α=0 e β=1 (conjunto),84.79590536005713,9.841973306084253e-37,Rejeita H₀ — efeito significativo ✓,Retornos reais da estratégia
+MinVar,Jobson-Korkie/Memmel,SR_strat = SR_IBOV,-0.1796325363852397,0.8574410598079056,Não rejeita H₀ ✗,Retornos reais da estratégia
+MinVar,"CAPM α (NW, rf variável)",α = 0,-0.21856676014160342,0.826987548295057,Não rejeita H₀ ✗,Retornos reais da estratégia
+MinVar,Spanning Huberman-Kandel (F),α=0 e β=1 (conjunto),2733.0003589098087,0.0,Rejeita H₀ — efeito significativo ✓,Retornos reais da estratégia
+MaxSharpe,Jobson-Korkie/Memmel,SR_strat = SR_IBOV,0.3717609008065512,0.7100708771310715,Não rejeita H₀ ✗,Retornos reais da estratégia
+MaxSharpe,"CAPM α (NW, rf variável)",α = 0,0.40907553862846746,0.6824842269411766,Não rejeita H₀ ✗,Retornos reais da estratégia
+MaxSharpe,Spanning Huberman-Kandel (F),α=0 e β=1 (conjunto),35.57935153401821,4.95302523025865e-16,Rejeita H₀ — efeito significativo ✓,Retornos reais da estratégia
+InvVol,Jobson-Korkie/Memmel,SR_strat = SR_IBOV,-0.09939604434042482,0.9208238233716837,Não rejeita H₀ ✗,Retornos reais da estratégia
+InvVol,"CAPM α (NW, rf variável)",α = 0,-0.11064198233038222,0.9119002547599634,Não rejeita H₀ ✗,Retornos reais da estratégia
+InvVol,Spanning Huberman-Kandel (F),α=0 e β=1 (conjunto),113.83341198384323,1.0589229015912135e-48,Rejeita H₀ — efeito significativo ✓,Retornos reais da estratégia

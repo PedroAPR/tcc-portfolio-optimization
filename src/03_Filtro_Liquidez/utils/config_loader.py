@@ -1,40 +1,35 @@
-"""Carregamento de parâmetros metodológicos e resolução de caminhos do projeto.
-
-Módulo de configuração: centraliza constantes, leitura do `config.json` e a
-preparação dos diretórios de saída.
-"""
-from __future__ import annotations
-
-import json
+# Redirection wrapper for backward compatibility with notebooks and tests.
+import sys
 from pathlib import Path
-import pandas as pd
 
-# --- Constantes metodológicas ---
-TRADING_DAYS = 252      # Convenção de dias úteis para anualização
-CODIGO_CDI = 12         # Série SGS/BCB — CDI diário (% a.d.)
-CODIGO_SELIC = 11       # Série SGS/BCB — SELIC diária over (% a.d.)
+# 1. Identify paths
+local_utils_dir = Path(__file__).resolve().parent
+local_stage_dir = local_utils_dir.parent
+src_dir = local_stage_dir.parent
 
-def carregar_parametros(caminho: str | Path | None = None) -> dict:
-    """Lê o `config.json` centralizado na raiz de src/ e devolve os parâmetros."""
-    if caminho is None or caminho == "config.json" or Path(caminho).name == "config.json":
-        caminho = Path(__file__).resolve().parent.parent.parent / "config.json"
-    else:
-        caminho = Path(caminho)
-        
-    with open(caminho, "r", encoding="utf-8") as f:
-        return json.load(f)
+# 2. Adjust sys.path to prioritize central src/ over local stage directory
+sys_path_backup = sys.path.copy()
+sys.path = [p for p in sys.path if Path(p).resolve() != local_stage_dir.resolve()]
+src_dir_str = str(src_dir)
+if src_dir_str not in sys.path:
+    sys.path.insert(0, src_dir_str)
 
-def formatar_periodo(config: dict) -> tuple[str, str]:
-    """Devolve (data_inicial, data_final) no formato dd/mm/aaaa para exibição."""
-    inicio = pd.to_datetime(config["DATA_INICIO"]).strftime("%d/%m/%Y")
-    fim = pd.to_datetime(config["DATA_FIM"]).strftime("%d/%m/%Y")
-    return inicio, fim
+# 3. Backup and temporarily remove "utils" from sys.modules to prevent recursion
+sys_modules_backup = {}
+for k in list(sys.modules.keys()):
+    if k == "utils" or k.startswith("utils."):
+        sys_modules_backup[k] = sys.modules.pop(k)
 
-def preparar_diretorios_saida(base: str | Path | None = None) -> tuple[Path, Path]:
-    """Cria (se necessário) e devolve os diretórios de saída de CDI e SELIC."""
-    raiz = Path(base) if base is not None else Path(__file__).resolve().parent.parent.parent.parent
-    dir_cdi = raiz / "data" / "CDI"
-    dir_selic = raiz / "data" / "Selic"
-    dir_cdi.mkdir(parents=True, exist_ok=True)
-    dir_selic.mkdir(parents=True, exist_ok=True)
-    return dir_cdi, dir_selic
+try:
+    # Perform absolute import of the central module
+    module_name = Path(__file__).stem
+    central_module_name = f"utils.config_loader"
+    central_module = __import__(central_module_name, fromlist=["*"])
+finally:
+    # Restore sys.path and sys.modules
+    sys.path = sys_path_backup
+    for k, v in sys_modules_backup.items():
+        sys.modules[k] = v
+
+# 4. Export all symbols to local namespace
+globals().update({k: v for k, v in central_module.__dict__.items() if not k.startswith("__")})

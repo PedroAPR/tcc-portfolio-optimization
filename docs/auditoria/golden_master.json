@@ -1,0 +1,179 @@
+{
+  "strategies": {
+    "EqualWeight": {
+      "CAGR": 0.13912046,
+      "Vol": 0.19555391,
+      "Sharpe": 0.29019464,
+      "Sortino": 0.40270589,
+      "MaxDD": -0.35538726,
+      "Turnover": 0.82930712
+    },
+    "InvVol": {
+      "CAGR": 0.14646883,
+      "Vol": 0.1889643,
+      "Sharpe": 0.32762543,
+      "Sortino": 0.45536822,
+      "MaxDD": -0.34281367,
+      "Turnover": 0.78810892
+    },
+    "MinVar": {
+      "CAGR": 0.12999893,
+      "Vol": 0.12948713,
+      "Sharpe": 0.2930651,
+      "Sortino": 0.40031429,
+      "MaxDD": -0.25054079,
+      "Turnover": 0.80092445
+    },
+    "MinVar_c10": {
+      "CAGR": 0.13173079,
+      "Vol": 0.12983779,
+      "Sharpe": 0.3044272,
+      "Sortino": 0.41542586,
+      "MaxDD": -0.24998783,
+      "Turnover": 0.78557971
+    },
+    "MaxSharpe": {
+      "CAGR": 0.1396355,
+      "Vol": 0.17539814,
+      "Sharpe": 0.30460829,
+      "Sortino": 0.43015214,
+      "MaxDD": -0.22762194,
+      "Turnover": 1.21869184
+    },
+    "MaxSharpe_c10": {
+      "CAGR": 0.12985742,
+      "Vol": 0.16543241,
+      "Sharpe": 0.26059302,
+      "Sortino": 0.36492012,
+      "MaxDD": -0.2389311,
+      "Turnover": 1.50760572
+    },
+    "MaxOmega": {
+      "CAGR": 0.10706136,
+      "Vol": 0.21226407,
+      "Sharpe": 0.14874039,
+      "Sortino": 0.21034006,
+      "MaxDD": -0.30673702,
+      "Turnover": 2.24077805
+    },
+    "MaxSortino": {
+      "CAGR": 0.13527358,
+      "Vol": 0.1779198,
+      "Sharpe": 0.28124084,
+      "Sortino": 0.39726429,
+      "MaxDD": -0.23264765,
+      "Turnover": 1.3099959
+    },
+    "MaxKappa3": {
+      "CAGR": 0.13644237,
+      "Vol": 0.18264826,
+      "Sharpe": 0.28426261,
+      "Sortino": 0.40290506,
+      "MaxDD": -0.2255392,
+      "Turnover": 1.33752683
+    },
+    "MinCVaR": {
+      "CAGR": 0.12570932,
+      "Vol": 0.12879134,
+      "Sharpe": 0.26438658,
+      "Sortino": 0.36263966,
+      "MaxDD": -0.26441691,
+      "Turnover": 1.10559415
+    },
+    "MinCDaR": {
+      "CAGR": 0.05357949,
+      "Vol": 0.19819369,
+      "Sharpe": -0.10501765,
+      "Sortino": -0.14538069,
+      "MaxDD": -0.62458646,
+      "Turnover": 1.47353189
+    },
+    "BL_classico": {
+      "CAGR": 0.24310264,
+      "Vol": 0.25969486,
+      "Sharpe": 0.61097684,
+      "Sortino": 0.89020612,
+      "MaxDD": -0.38929048,
+      "Turnover": 7.98188203
+    },
+    "BL_classico_c10": {
+      "CAGR": 0.20441596,
+      "Vol": 0.20200808,
+      "Sharpe": 0.56323827,
+      "Sortino": 0.79156694,
+      "MaxDD": -0.33595977,
+      "Turnover": 6.29423771
+    },
+    "BL_downside": {
+      "CAGR": 0.22907954,
+      "Vol": 0.32166327,
+      "Sharpe": 0.513838,
+      "Sortino": 0.75323808,
+      "MaxDD": -0.57407132,
+      "Turnover": 9.48185107
+    },
+    "BL_downside_c10": {
+      "CAGR": 0.16867773,
+      "Vol": 0.22303646,
+      "Sharpe": 0.39509126,
+      "Sortino": 0.55430112,
+      "MaxDD": -0.3800731,
+      "Turnover": 7.32867447
+    },
+    "IBOV": {
+      "CAGR": 0.11260133,
+      "Vol": 0.23317888,
+      "Sharpe": 0.17766193,
+      "Sortino": 0.24454858,
+      "MaxDD": -0.46815962,
+      "Turnover": null
+    },
+    "EqualWeight_BuyHold": {
+      "CAGR": 0.17283937,
+      "Vol": 0.19275049,
+      "Sharpe": 0.44290629,
+      "Sortino": 0.62059085,
+      "MaxDD": -0.32997388,
+      "Turnover": 0.0
+    }
+  },
+  "shapes": {
+    "Matriz_precos_sanitizada": [
+      3967,
+      103
+    ],
+    "painel_alinhado": [
+      3967,
+      106
+    ],
+    "retornos_simples_saneado": [
+      3966,
+      102
+    ],
+    "retornos_log_saneado": [
+      3966,
+      102
+    ],
+    "sigma_amostral_anual": [
+      102,
+      102
+    ],
+    "sigma_ledoitwolf_anual": [
+      102,
+      102
+    ],
+    "strategy_returns": [
+      2690,
+      17
+    ],
+    "pesos_historico": [
+      55159,
+      4
+    ]
+  },
+  "universe_hashes": {
+    "universo_pos_liquidez": "8dfaa7d6f3b938b1ec2535dd2dfb38af",
+    "tickers_finais": "6db82eac5dba2f840b897ace1421c8a3",
+    "tickers_excluidos_integridade": "514dab9d5e396b5e758582d8b50fc6e3"
+  }
+}
