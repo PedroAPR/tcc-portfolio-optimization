@@ -115,8 +115,8 @@ class TestTamanhoH0:
         for k in range(N_MC):
             r1 = _gera_iid(mu_diario, sig_diario, T_SERIE, seed=SEED_BASE + k*2)
             r2 = _gera_iid(mu_diario, sig_diario, T_SERIE, seed=SEED_BASE + k*2 + 1)
-            exc_a = pd.Series(r1 - r1.mean())   # excesso centrado em 0 para H0
-            exc_b = pd.Series(r2 - r2.mean())
+            exc_a = pd.Series(r1)   # excesso com mesmo Sharpe populacional para H0
+            exc_b = pd.Series(r2)
             z, p = _jk_memmel(exc_a, exc_b)
             if p < ALPHA_TEST:
                 rejeicoes += 1
@@ -140,8 +140,8 @@ class TestTamanhoH0:
             r2 = _gera_garch11(mu_diario, 1e-5, 0.10, 0.85, T_SERIE,
                                seed=SEED_BASE + k*2 + 1)
             _, p_lw = lw_bootstrap_sharpe(r1, r2, bloco=10, reps=B_BOOT, seed=SEED_BASE+k)
-            exc_a = pd.Series(r1 - r1.mean())
-            exc_b = pd.Series(r2 - r2.mean())
+            exc_a = pd.Series(r1)
+            exc_b = pd.Series(r2)
             _, p_jkm = _jk_memmel(exc_a, exc_b)
             if p_lw  < ALPHA_TEST: rej_lw  += 1
             if p_jkm < ALPHA_TEST: rej_jkm += 1
