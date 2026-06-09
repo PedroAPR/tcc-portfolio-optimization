@@ -20,30 +20,29 @@ except Exception as e:
 # ---------------------------------------------------------------------------
 _CVXPY_TOL = 1e-4
 
+# Tolerância MAIS APERTADA para problemas de cauda (CVaR/CDaR), cujo LP é
+# sensível a condicionamento. Combinada à reescala da riqueza no CDaR, leva o
+# solver a 'optimal' em vez de 'optimal_inaccurate'.
+_TOL_TAIL = 1e-6
+
+
+import importlib.util
+
+# Carrega a implementação canônica de ledoit_wolf de covariancia.py
+_src_dir = Path(__file__).resolve().parent.parent.parent
+_cov_path = _src_dir / "06_Estimacao_Covariancia" / "utils" / "covariancia.py"
+_spec = importlib.util.spec_from_file_location("covariancia_module", str(_cov_path))
+_cov_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_cov_module)
+_ledoit_wolf_canonical = _cov_module.ledoit_wolf
 
 def ledoit_wolf(X):
     """
-    Estimador de encolhimento (shrinkage) de Ledoit & Wolf (2004)
-    em direção à matriz de covariância isotrópica média.
-    Versão ultra-veloz e vetorizada de complexidade O(T * N).
+    Estimador de encolhimento (shrinkage) de Ledoit & Wolf (2004).
+    Invoca a implementação canônica de covariancia.py.
     """
-    X = np.asarray(X, float)
-    T, N = X.shape
-    if T <= 1:
-        raise ValueError("O número de observações (T) deve ser maior que 1.")
-    Xc = X - X.mean(axis=0)
-    S = (Xc.T @ Xc) / T
-    mu = np.trace(S) / N
-    F = mu * np.eye(N)
-    d2 = np.sum((S - F) ** 2) / N
-    if d2 == 0:
-        return S
-    term1 = np.sum(np.sum(Xc ** 2, axis=1) ** 2)
-    term2 = T * np.sum(S ** 2)
-    b2bar = (term1 - term2) / (T ** 2 * N)
-    b2 = min(b2bar, d2)
-    delta = b2 / d2
-    return delta * F + (1.0 - delta) * S
+    return _ledoit_wolf_canonical(X)[0]
+
 
 
 def estimar_sigma(janela, metodo="ledoit_wolf"):
@@ -266,16 +265,38 @@ def w_max_kappa(janela, n=2, mar=0.0, teto=None, long_only=True, w0=None):
     return r.x / r.x.sum()
 
 
-def _solve(prob):
-    """Tenta resolver o problema convexo usando os solvers disponíveis em ordem de robustez."""
+def _resolver_robusto(prob, tol=_CVXPY_TOL):
+    """Tenta os solvers em ordem de robustez e retorna o MELHOR status alcançado.
+    Para imediatamente ao atingir 'optimal'. NÃO aceita 'optimal_inaccurate'
+    silenciosamente — quem chama decide o que fazer com o status."""
+    melhor = None
     for s in _SOLVERS:
         try:
-            prob.solve(solver=getattr(cp, s))
-            if prob.status in ("optimal", "optimal_inaccurate"):
-                return True
+            if s == "CLARABEL":
+                prob.solve(solver=cp.CLARABEL, tol_gap_abs=tol, tol_gap_rel=tol, verbose=False)
+            elif s == "ECOS":
+                prob.solve(solver=cp.ECOS, abstol=tol, reltol=tol, verbose=False)
+            else:
+                prob.solve(solver=getattr(cp, s), verbose=False)
         except Exception:
             continue
-    return False
+        melhor = prob.status
+        if prob.status == "optimal":
+            return "optimal"
+    return melhor
+
+
+def _pesos_validos(w_val, tol_soma=1e-4, tol_neg=-1e-6):
+    """True se o vetor de pesos é finito, soma ~1 e respeita long-only."""
+    return (w_val is not None and np.all(np.isfinite(w_val))
+            and abs(float(np.sum(w_val)) - 1.0) <= tol_soma
+            and float(np.min(w_val)) >= tol_neg)
+
+
+def _solve(prob):
+    """Resolve um problema convexo; retorna True SOMENTE se o status for 'optimal'
+    (rejeita 'optimal_inaccurate', que mascarava soluções degeneradas)."""
+    return _resolver_robusto(prob) == "optimal"
 
 
 def w_min_cvar(cenarios, alpha=0.95, teto=None, long_only=True):
@@ -295,41 +316,47 @@ def w_min_cvar(cenarios, alpha=0.95, teto=None, long_only=True):
     cvar = zeta + (1.0 / ((1 - alpha) * T)) * cp.sum(u)
     prob = cp.Problem(cp.Minimize(cvar), cons)
 
-    for solver_name in _SOLVERS:
-        try:
-            if solver_name == "CLARABEL":
-                prob.solve(solver=cp.CLARABEL,
-                           tol_gap_abs=_CVXPY_TOL, tol_gap_rel=_CVXPY_TOL,
-                           verbose=False)
-            elif solver_name == "ECOS":
-                prob.solve(solver=cp.ECOS,
-                           abstol=_CVXPY_TOL, reltol=_CVXPY_TOL,
-                           verbose=False)
-            else:
-                prob.solve(solver=getattr(cp, solver_name))
-            if prob.status in ("optimal", "optimal_inaccurate"):
-                break
-        except Exception:
-            continue
+    status = _resolver_robusto(prob, tol=_TOL_TAIL)
+    w_val = None if w.value is None else np.asarray(w.value, float).flatten()
+    if status != "optimal" or not _pesos_validos(w_val):
+        raise RuntimeError(f"w_min_cvar: solve não-confiável (status={status}).")
 
-    x = np.clip(np.asarray(w.value).flatten(), 0, None)
+    x = np.clip(w_val, 0.0, None)
     return x / x.sum()
 
 
-def w_min_cdar(cenarios, alpha=0.95, teto=None, long_only=True):
+def w_min_cdar(cenarios, alpha=0.95, teto=None, long_only=True, janela_max=None):
     """
     Resolve a carteira de Mínimo CDaR (Chekhlov-Uryasev-Zabarankin) via LP Convexo.
-    Proposta 3 — tolerância relaxada _CVXPY_TOL (1e-4) vs. original (1e-5).
+
+    Correções vs. versão anterior:
+      - Reescala global da riqueza acumulada para ordem O(1): preserva o argmin
+        (escalar positivo no objetivo), mas evita o LP mal-condicionado em janelas
+        longas com ativos de crescimento extremo — causa raiz do 'optimal_inaccurate'.
+      - Aceita SOMENTE status 'optimal' (tolerância _TOL_TAIL); caso contrário levanta
+        RuntimeError e o chamador (otimizar_mes_task) cai para EqualWeight. Nunca
+        propaga pesos degenerados (origem do drawdown espúrio de -84%).
+      - 'janela_max' (opcional) restringe o CDaR aos últimos N pregões: reduz o LP e
+        limita o drawdown ao histórico recente (defensável e bem-condicionado).
     """
     if not CVXPY_OK:
         raise RuntimeError("cvxpy indisponível para CDaR")
-    R = np.asarray(cenarios, float); T, k = R.shape
-    # [FIX G7] Processo de riqueza multiplicativo (cumprod) em vez de aditivo (cumsum).
-    # O drawdown é definido como queda percentual do pico da riqueza acumulada.
-    # cumsum aproxima log(riqueza) apenas para retornos próximos de zero; para
-    # janelas longas (T~1260) o erro é material. cumprod(1+R) é o processo correto,
-    # consistente com max_drawdown() em inferencia.py (que usa cumprod).
+    R = np.asarray(cenarios, float)
+    if janela_max is not None and R.shape[0] > int(janela_max):
+        R = R[-int(janela_max):]
+    T, k = R.shape
+
+    # [FIX G7] Processo de riqueza multiplicativo (cumprod): drawdown como queda
+    # percentual do pico, consistente com max_drawdown() (também cumprod).
     Rcum = np.cumprod(1 + R, axis=0)
+    # [FIX condicionamento] normaliza a escala da riqueza (escalar positivo global):
+    # argmin invariante, mas o solver deixa de operar com magnitudes que disparavam
+    # 'optimal_inaccurate' em T longo.
+    G = float(np.max(Rcum))
+    if not np.isfinite(G) or G <= 0:
+        G = 1.0
+    Rcum = Rcum / G
+
     w = cp.Variable(k); u = cp.Variable(T); z = cp.Variable(T, nonneg=True); zeta = cp.Variable()
     C = Rcum @ w
     hi = teto if teto is not None else 1.0
@@ -339,24 +366,12 @@ def w_min_cdar(cenarios, alpha=0.95, teto=None, long_only=True):
     cdar = zeta + (1.0 / ((1 - alpha) * T)) * cp.sum(z)
     prob = cp.Problem(cp.Minimize(cdar), cons)
 
-    for solver_name in _SOLVERS:
-        try:
-            if solver_name == "CLARABEL":
-                prob.solve(solver=cp.CLARABEL,
-                           tol_gap_abs=_CVXPY_TOL, tol_gap_rel=_CVXPY_TOL,
-                           verbose=False)
-            elif solver_name == "ECOS":
-                prob.solve(solver=cp.ECOS,
-                           abstol=_CVXPY_TOL, reltol=_CVXPY_TOL,
-                           verbose=False)
-            else:
-                prob.solve(solver=getattr(cp, solver_name))
-            if prob.status in ("optimal", "optimal_inaccurate"):
-                break
-        except Exception:
-            continue
+    status = _resolver_robusto(prob, tol=_TOL_TAIL)
+    w_val = None if w.value is None else np.asarray(w.value, float).flatten()
+    if status != "optimal" or not _pesos_validos(w_val):
+        raise RuntimeError(f"w_min_cdar: solve não-confiável (status={status}).")
 
-    x = np.clip(np.asarray(w.value).flatten(), 0, None)
+    x = np.clip(w_val, 0.0, None)
     return x / x.sum()
 
 
