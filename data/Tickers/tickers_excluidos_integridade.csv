@@ -1,0 +1,17 @@
+﻿ticker,motivo,anos_penny,anos_situacao,codigos
+AMER3,"situação especial recente em [2023, 2024, 2025]",2024,"2023,2024,2025",AMER3
+ETER3,"situação especial recente em [2023, 2024]",2018,"2018,2019,2020,2021,2022,2023,2024",ETER3
+FICT3,"reorganização societária (identidade rompida; ISIN/ticker novo) [corrobora: penny [2015, 2016], RJ [2015, 2016, 2017]]","2015,2016","2015,2016,2017",FICT3;ATOM3
+GOLL54,reorganização societária (identidade rompida; ISIN/ticker novo) [corrobora: penny [2025]],2025,,GOLL54;GOLL4
+LIGT3,"situação especial recente em [2023, 2024, 2025]",,"2023,2024,2025",LIGT3
+LUPA3,situação especial recente em [2023],"2013,2014","2015,2016,2017,2018,2019,2020,2021,2022,2023",LUPA3
+NEXP3,"situação especial recente em [2023, 2024, 2025]",2022,"2023,2024,2025",NEXP3
+OIBR3,"situação especial recente em [2023, 2024, 2025]","2022,2025","2016,2017,2018,2019,2020,2021,2022,2023,2024,2025",OIBR3
+OIBR4,"situação especial recente em [2023, 2024, 2025]",,"2016,2017,2018,2019,2020,2021,2022,2023,2024,2025",OIBR4
+PDGR3,"penny recente (mediana<R$1) e ilíquida em [2024, 2025] (ADTV R$ 294,218 < corte R$ 829,107)","2015,2024,2025","2017,2018,2019,2020,2021",PDGR3
+PDTC3,reorganização societária (identidade rompida; ISIN/ticker novo),,,PDTC3;IDNT3
+PMAM3,"situação especial recente em [2023, 2024, 2025]",,"2022,2023,2024,2025",PMAM3
+RPMG3,"situação especial recente em [2023, 2024, 2025]","2010,2011,2012,2013,2014,2015","2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025",RPMG3
+RSID3,"situação especial recente em [2023, 2024, 2025]",,"2022,2023,2024,2025",RSID3
+VIVR3,"penny recente (mediana<R$1) e ilíquida em [2025] (ADTV R$ 41,294 < corte R$ 829,107)","2013,2014,2015,2018,2022,2025","2016,2017,2018,2019,2020,2021",VIVR3
+VSTE3,"reorganização societária (identidade rompida; ISIN/ticker novo) [corrobora: RJ [2020, 2021, 2022, 2023]]",,"2020,2021,2022,2023",VSTE3;LLIS3
