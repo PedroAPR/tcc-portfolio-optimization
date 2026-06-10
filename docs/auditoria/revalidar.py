@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import hashlib
 import argparse
 import pandas as pd
 from pathlib import Path
@@ -104,7 +105,8 @@ def detect_changed_stages():
             
     return list(changed_stages)
 
-def is_close(val1, val2, rtol=1e-5, atol=1e-8):
+# Tolerância relativa de 1e-6, conforme invariante do projeto (CLAUDE.md / 00_setup.md)
+def is_close(val1, val2, rtol=1e-6, atol=1e-8):
     if val1 is None and val2 is None:
         return True
     if val1 is None or val2 is None:
@@ -209,7 +211,31 @@ def validate_golden_master():
             passed = False
         else:
             print(f"  [+] Shape de '{name}': {new_shape} [OK]")
-            
+
+    # 3. Comparar hashes MD5 dos CSVs de universo (proteção contra alteração
+    #    do universo de 102 ativos / reintrodução dos 16 tickers excluídos)
+    print("\n[Hashes do Universo de Ativos]")
+    tickers_dir = data_dir / "Tickers"
+    files_to_hash = {
+        "universo_pos_liquidez": tickers_dir / "universo_pos_liquidez.csv",
+        "tickers_finais": tickers_dir / "tickers_finais.csv",
+        "tickers_excluidos_integridade": tickers_dir / "tickers_excluidos_integridade.csv"
+    }
+
+    for name, expected_hash in gold.get("universe_hashes", {}).items():
+        path = files_to_hash.get(name)
+        if path is None or not path.exists():
+            print(f"  [-] Arquivo de universo '{name}' não encontrado! [FAIL]")
+            passed = False
+            continue
+
+        new_hash = hashlib.md5(path.read_bytes()).hexdigest()
+        if new_hash != expected_hash:
+            print(f"  [-] Hash de '{name}': Esperado {expected_hash} vs Novo {new_hash} [FAIL]")
+            passed = False
+        else:
+            print(f"  [+] Hash de '{name}': {new_hash} [OK]")
+
     print("="*60)
     if passed:
         print("RESULTADO GERAL: PASS (Tudo em conformidade com o Golden Master!)")
