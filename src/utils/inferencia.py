@@ -191,3 +191,189 @@ def diagnostico_residuos(res, nome):
         "LB Q(10) em z": float(lb_z["lb_pvalue"]),
         "LB Q(10) em z²": float(lb_z2["lb_pvalue"])
     }
+
+def calcular_dsr(sharpe_best, sharpes, T, skew, kurt, N):
+    """
+    Calcula o Deflated Sharpe Ratio (DSR) de Bailey & López de Prado (2012).
+    
+    Args:
+        sharpe_best (float): Sharpe Ratio anualizado da melhor estratégia.
+        sharpes (list/np.ndarray): Sharpe Ratios anualizados de todas as estratégias testadas.
+        T (int): Comprimento da amostra (número de dias úteis).
+        skew (float): Assimetria (skewness) dos retornos diários da melhor estratégia.
+        kurt (float): Curtose (kurtosis) dos retornos diários da melhor estratégia (não-excedente).
+        N (int): Número de estratégias testadas.
+        
+    Returns:
+        float: DSR (probabilidade em [0, 1]).
+    """
+    std_sr = np.std(sharpes, ddof=1) if len(sharpes) > 1 else 0.0
+    if std_sr <= 1e-14:  # tolerância de ponto flutuante (convenção do projeto)
+        return 0.0
+        
+    euler = 0.5772156649
+    q = 1.0 - 1.0 / N
+    q_e = 1.0 - 1.0 / (N * np.e)
+    
+    # expected max SR under H0 (independent trials)
+    sr0 = std_sr * ((1.0 - euler) * stats.norm.ppf(q) + euler * stats.norm.ppf(q_e))
+    
+    if kurt < 1.0: # safety guard
+        kurt = 3.0
+        
+    # daily equivalent values
+    sr_d = sharpe_best / np.sqrt(TRADING_DAYS)
+    sr0_d = sr0 / np.sqrt(TRADING_DAYS)
+    
+    # variance of daily Sharpe ratio estimate
+    var_srd = (1.0 - skew * sr_d + (kurt - 1.0) / 4.0 * sr_d**2) / (T - 1.0)
+    
+    if var_srd <= 0.0:
+        return 0.0
+        
+    z = (sr_d - sr0_d) / np.sqrt(var_srd)
+    return float(stats.norm.cdf(z))
+
+def deflated_sharpe_ratio(retornos_best, all_sharpes):
+    """
+    Calcula o Deflated Sharpe Ratio (DSR) de Bailey & López de Prado (2012).
+    
+    Args:
+        retornos_best (pd.Series/np.ndarray): Série de retornos diários da melhor estratégia.
+        all_sharpes (list/np.ndarray): Sharpe Ratios anualizados de todas as estratégias testadas.
+        
+    Returns:
+        float: DSR (probabilidade em [0, 1]).
+    """
+    r = np.asarray(retornos_best, float)
+    r = r[~np.isnan(r)]
+    T = len(r)
+    if T <= 2:
+        return 0.0
+        
+    s = r.std(ddof=1)
+    if s == 0:
+        return 0.0
+    sr_best_daily = float(r.mean() / s)
+    sr_best = sr_best_daily * np.sqrt(TRADING_DAYS)
+    
+    skew = float(stats.skew(r))
+    kurt = float(stats.kurtosis(r, fisher=False)) # actual kurtosis (Fisher=False means normal=3)
+    
+    N = len(all_sharpes)
+    
+    return calcular_dsr(sr_best, all_sharpes, T, skew, kurt, N)
+
+def matriz_correlacao_significancia(df_retornos):
+    """
+    Calcula a matriz de correlação de Pearson e a correspondente matriz de p-valores
+    para testar H0: rho = 0 (sem correlação linear) de forma bilateral.
+    
+    Args:
+        df_retornos (pd.DataFrame): DataFrame com retornos das estratégias (T x N).
+        
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame]: (matriz_correlação, matriz_pvalores).
+    """
+    corr = df_retornos.corr()
+    p_values = pd.DataFrame(np.zeros_like(corr.values), columns=corr.columns, index=corr.index)
+    T = len(df_retornos)
+    if T <= 2:
+        return corr, p_values
+        
+    for i in corr.index:
+        for j in corr.columns:
+            if i == j:
+                p_values.loc[i, j] = 0.0
+            else:
+                r = corr.loc[i, j]
+                denom = np.sqrt(1.0 - r**2)
+                if denom <= 1e-15:
+                    p_values.loc[i, j] = 0.0
+                else:
+                    t_stat = r * np.sqrt((T - 2) / (1.0 - r**2))
+                    p_values.loc[i, j] = float(2.0 * (1.0 - stats.t.cdf(abs(t_stat), df=T-2)))
+    return corr, p_values
+
+def regressao_multifatorial(ret_carteira, df_fatores, maxlags=5):
+    """
+    Roda regressão OLS multifatorial com constante e estimador HAC de Newey-West.
+    
+    Args:
+        ret_carteira (pd.Series): Retornos da carteira.
+        df_fatores (pd.DataFrame): DataFrame contendo os fatores de risco (ex: MKT, SMB, HML).
+        maxlags (int): Defasagem para o estimador Newey-West.
+        
+    Returns:
+        dict: Resultados estatísticos consolidados.
+    """
+    dados = pd.concat([ret_carteira.rename("ret_p"), df_fatores], axis=1, join="inner").dropna()
+    y = dados["ret_p"]
+    X = dados.drop(columns=["ret_p"])
+    X_const = sm.add_constant(X)
+    
+    res = sm.OLS(y, X_const).fit(cov_type="HAC", cov_kwds={"maxlags": maxlags})
+    
+    params = {}
+    for idx, name in enumerate(X_const.columns):
+        params[name] = {
+            "coef": float(res.params.iloc[idx]),
+            "std_err": float(res.bse.iloc[idx]),
+            "t_stat": float(res.tvalues.iloc[idx]),
+            "p_value": float(res.pvalues.iloc[idx])
+        }
+        
+    return {
+        "params": params,
+        "r2": float(res.rsquared),
+        "r2_adj": float(res.rsquared_adj),
+        "f_pvalue": float(res.f_pvalue) if hasattr(res, "f_pvalue") else None,
+        "nobs": int(res.nobs)
+    }
+
+def spanning_multivariado(df_ativos_teste, df_benchmarks, maxlags=5):
+    """
+    Realiza o teste multivariado de Spanning de Portfólio de Huberman & Kandel (1987)
+    com suporte a erros padrão HAC (Newey-West) e correlação contemporânea entre ativos (SUR stacked OLS).
+    
+    Args:
+        df_ativos_teste (pd.DataFrame): DataFrame com retornos das carteiras teste (T x N).
+        df_benchmarks (pd.DataFrame): DataFrame com retornos dos benchmarks de referência (T x K).
+        maxlags (int): Defasagem de Newey-West.
+        
+    Returns:
+        tuple[float, float]: (estatística_Wald, p-valor).
+    """
+    dados = pd.concat([df_ativos_teste, df_benchmarks], axis=1, join="inner").dropna()
+    N = df_ativos_teste.shape[1]
+    K = df_benchmarks.shape[1]
+    T = len(dados)
+    
+    Y = dados[df_ativos_teste.columns].values
+    X = dados[df_benchmarks.columns].values
+    X_const = np.column_stack([np.ones(T), X])
+    
+    y_stacked = Y.T.flatten()
+    
+    from scipy.sparse import block_diag
+    X_stacked = block_diag([X_const] * N).toarray()
+    
+    res = sm.OLS(y_stacked, X_stacked).fit(cov_type="HAC", cov_kwds={"maxlags": maxlags})
+    
+    num_vars_eq = K + 1
+    R_joint = np.zeros((2 * N, N * num_vars_eq))
+    r_joint = np.zeros(2 * N)
+    
+    for i in range(N):
+        R_joint[2 * i, i * num_vars_eq] = 1.0
+        r_joint[2 * i] = 0.0
+        
+        for j in range(1, num_vars_eq):
+            R_joint[2 * i + 1, i * num_vars_eq + j] = 1.0
+        r_joint[2 * i + 1] = 1.0
+        
+    wald = res.wald_test((R_joint, r_joint), use_f=True, scalar=True)
+    return float(np.asarray(wald.statistic).flatten()[0]), float(np.asarray(wald.pvalue).flatten()[0])
+
+
+
