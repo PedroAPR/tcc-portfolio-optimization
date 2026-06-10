@@ -57,3 +57,6 @@ src/.pipeline_cache.json
 scratch/*.py
 scratch/*.txt
 src/scratch/
+
+# Credenciais (NUNCA versionar)
+github_pat_*.txt
