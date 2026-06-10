@@ -41,6 +41,13 @@ Thumbs.db
 data/dados_economatica/
 data/dados_economatica_consolidados/
 data/dados_economatica_tratados/
+data/B3_COTAHIST/
+data/B3_COTAHIST_Tratatos/
+data/Estrategias_Backup_Orig/
+
+# Configurações locais do Claude Code (permissões por máquina)
+.claude/settings.local.json
+.claude/settings.local.json.tmp.*
 
 # Cache interno do pipeline
 src/.pipeline_cache.json
