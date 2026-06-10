@@ -44,6 +44,7 @@ data/dados_economatica_tratados/
 data/B3_COTAHIST/
 data/B3_COTAHIST_Tratatos/
 data/Estrategias_Backup_Orig/
+docs/Pmpt/drive-download-20260606T130836Z-3-001.zip
 
 # Configurações locais do Claude Code (permissões por máquina)
 .claude/settings.local.json
